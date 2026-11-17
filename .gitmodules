@@ -1,0 +1,3 @@
+[submodule "src/rune_advisor/data"]
+	path = src/rune_advisor/data
+	url = ../rune-advisor-data.git

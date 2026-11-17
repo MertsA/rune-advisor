@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.cache/
+*.egg-info/
+dist/
+# local copies of the game's plugin DB
+*.db
+rune_advisor.toml
+# Claude's memory and transcripts for this project's sandbox (kept here by agentbox)
+.claude/sandbox/
+# kept planner state (archives, seen items, tiles, API cache): config.STATE_DIR
+state/
+# local copies of the clients' PluginData.db, for a checkout that cannot reach the client's folder
+.plugin_db/
+# agent worktrees
+.claude/worktrees/
+
+# Keys kept in the project folder for the sandbox (release upload key, packaging key): never committed
+/.ssh/
+/.pkgkey/
+
+# The private overlay: a separate repository checked out here (operations documents, the dev plugin, personal
+# settings), and the links that put its files where tools look for them. Never part of this repository.
+/private/
+/CLAUDE.md
+/.sandbox-setup.md
+/overrides.toml
+/plugins/rune_advisor_dev
+/plugins/fish_flingers

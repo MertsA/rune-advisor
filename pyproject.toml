@@ -1,0 +1,37 @@
+[project]
+name = "rune-advisor"
+version = "0.1.0"
+description = "RuneScape 3 planning helper: player data ingest and goal recommendations"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "NOTICE.md"]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "typer>=0.12",
+    "rich>=13.7",
+    "cryptography>=42",
+]
+
+[project.optional-dependencies]
+ui = ["pywebview[qt]>=5; sys_platform == 'linux'", "pywebview>=5; sys_platform != 'linux'"]
+
+[project.scripts]
+radv = "rune_advisor.cli:app"
+runeadvisor = "rune_advisor.cli:app"
+
+[project.gui-scripts]
+rune-advisor = "rune_advisor.app:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "markdown-it-py>=3"]  # markdown-it: scripts/build_site_pages.py
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rune_advisor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

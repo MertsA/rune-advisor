@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What the plugin sends - Rune Advisor</title>
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <header class="site">
+    <a class="name" href="/">Rune Advisor</a>
+    <nav>
+      <a href="/docs/">Docs</a>
+      <a href="/docs/data/">What is sent</a>
+      <a href="/account/">Your account</a>
+      <a href="/privacy/">Privacy</a>
+      <a href="/terms/">Terms</a>
+    </nav>
+  </header>
+  <main>
+<h1>What the plugin sends, and where it goes</h1>
+<p>The plugin is called <em>Rune Advisor Export</em>. It has one permission, <code>httpAccess</code>, and one
+address it talks to: <code>https://api.runeadvisor.com</code>. This page lists everything that leaves your
+computer with the current version. The same list can be read in the plugin's own code, which is written to be read.</p>
+<p class="muted"><em>Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan
+Content Policy. This content is not endorsed by or affiliated with Jagex.</em></p>
+
+<h2>When anything is sent</h2>
+<ul>
+  <li><strong>Nothing is sent until you paste a token</strong> into the plugin's settings and the API accepts
+  it. Without a token the plugin does nothing.</li>
+  <li><strong>A token covers the whole computer.</strong> The game keeps a plugin's settings per computer, not
+  per login, so a saved token sends every character played in that game client there, whoever is playing. On a
+  shared computer, tell the others or remove the token when you finish.</li>
+  <li>After that it sends your character's full state once per login, and then only what changed, at most once
+  every few seconds while things are changing (the API sets the pace; 10 seconds by default).</li>
+  <li>After a game update the plugin may also upload the game's own quest and achievement definitions that
+  changed (see below). That is game data, not data about you.</li>
+</ul>
+
+<h2>What is sent about your character</h2>
+<div class="scroll"><table>
+  <tr><th>What</th><th>Detail</th></tr>
+  <tr><td>Character name</td><td>Your display name, so the planner can ask for the right character.</td></tr>
+  <tr><td>Skills</td><td>Experience in each of the 29 skills.</td></tr>
+  <tr><td>Members flag</td><td>Whether the character is on a members' world.</td></tr>
+  <tr><td>Quest and achievement progress</td><td>The player variables the game's quests and achievements
+  test, and only the bits those tests read. From these the server works out which quests and achievements are
+  done and how far the open ones are.</td></tr>
+  <tr><td>Storage and currency variables</td><td>A hand-written list in the plugin: quest points; ore box, herb
+  bag, soil box and Invention material counts; the Currencies window's balances (for example Slayer points,
+  Marks of War, outfit fragments); Distractions and Diversions tracker status; penguin points; banked bonus
+  experience; the item log's "ever obtained" flags; statue rock progress; the Invention charge pack; a few
+  upgrade states (campfire tier, tackle box level).</td></tr>
+  <tr><td>Your own item storage</td><td>Item ids and quantities in: bank, backpack, worn equipment and cosmetic
+  overrides, metal bank, money pouch and currency pouch, wood box, soil box, archaeology material storage,
+  herb bag, bait boxes, gizmo bag, spike harness, plank box, beast of burden, Necromancy storage (nexus,
+  ritual focus and reward chest), Anachronia Slayer helmet stand, the Wendle stash, and the player-owned house
+  costume room.</td></tr>
+  <tr><td>Housekeeping</td><td>The plugin's version, a counter of posts, and checksums that let the server
+  notice when it has fallen out of step and ask for the full state again.</td></tr>
+</table></div>
+
+<h2>What this version does not read or send</h2>
+<ul>
+  <li>Anything about other players: trade screens, other characters, friends or clan lists.</li>
+  <li>Chat of any kind.</li>
+  <li>Where your character is, what you click, or which keys you press.</li>
+  <li>Your Jagex account, login name, email address or anything else about you outside the game.</li>
+  <li>Shop stock or any other item list that is not your own storage.</li>
+</ul>
+<p>The server cannot ask the plugin for more. It may tell the plugin how often to post, to stop (a revoked
+token), and which of the game's quest and achievement definitions it lacks; it never chooses which player data
+is collected. Adding anything to the list above takes a new plugin version, which Jagex reviews. A later version may send
+more (the <a href="/privacy/">privacy policy</a> names what is being considered); this page changes first.</p>
+
+<h2>Game definitions after an update</h2>
+<p>The plugin works out what to send from the game's own quest and achievement definitions. When a game update
+changes them, the first plugins to notice upload the changed definitions (names, requirements, descriptions:
+the same for every player) so the server can decode posts again without a new plugin release. They are
+game data, not data about you: once checked (by the operator, or because enough other accounts sent exactly
+the same) they are used for every player and to develop the planner, whether or not you allow analysis, and
+they are kept after the account that sent them is deleted.</p>
+
+<h2>What stays on your computer</h2>
+<p>The plugin stores three things in the game client's plugin storage: your token, the posting pace the API last
+asked for, and the last state the API acknowledged (so the next login can send only changes). Removing the
+token in the plugin's settings, or revoking it on the <a href="/account/">account page</a>, stops all posting.</p>
+
+<h2>What the server keeps</h2>
+<ul>
+  <li>The latest state of each character, with the time of the last post. No history is kept today; the server may later keep the
+  changes the plugin already sends as one.</li>
+  <li>For the account: a random id, the day it was made and the day it was last used.</li>
+  <li>For each token: a hash of the token, its first six characters, your label for it, what it may do, the
+  days it was made and last used, and which of your characters it has posted for (with the day of the last
+  post), so the <a href="/account/">account page</a> can show which token belongs to which plugin.</li>
+  <li>For each character: whether, and since what day, you allow its data to be analysed to improve the
+  planner (off unless you turn it on in the plugin's settings or on the account page; nothing more is sent
+  either way).</li>
+  <li>No email address, no name, no password. The account key itself is not stored, only a hash of it.</li>
+</ul>
+<p>Like any web server, it also sees the internet address a request comes from. How long that and everything
+else is kept, who can see it and how to delete it is in the <a href="/privacy/">privacy policy</a>.</p>
+
+<h2>Who can read a character's state</h2>
+<p>Someone holding a <em>read</em> token of the account that the character's plugin posts to: normally only
+your own planner. You can give a group mate a read token limited to one character. A plugin's own token
+(<em>submit</em>) cannot read anything back. See <a href="/docs/accounts/">accounts, keys and tokens</a>.</p>
+  </main>
+  <footer class="site">
+    <p>Rune Advisor is a fan-made tool. Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan Content Policy. This content is not endorsed by or affiliated with Jagex.</p>
+    <p>RuneScape is a
+    trademark of Jagex Ltd. Game data in the planner comes from the
+    <a href="https://runescape.wiki/">RuneScape Wiki</a> (CC BY-NC-SA 3.0).</p>
+    <p>Contact: <a href="mailto:support@runeadvisor.com">support@runeadvisor.com</a>.
+    Privacy: <a href="mailto:privacy@runeadvisor.com">privacy@runeadvisor.com</a>.</p>
+  </footer>
+</body>
+</html>

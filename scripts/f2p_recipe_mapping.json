@@ -1,0 +1,512 @@
+[
+ {
+  "i": 30,
+  "output": "Fire",
+  "input": "Logs",
+  "confidence": "high"
+ },
+ {
+  "i": 31,
+  "output": "Fire",
+  "input": "Logs",
+  "confidence": "high"
+ },
+ {
+  "i": 32,
+  "output": "Fire",
+  "input": "Logs",
+  "confidence": "high"
+ },
+ {
+  "i": 33,
+  "output": "Fire",
+  "input": "Logs",
+  "confidence": "high"
+ },
+ {
+  "i": 34,
+  "output": "Fire",
+  "input": "Oak logs",
+  "confidence": "high"
+ },
+ {
+  "i": 35,
+  "output": "Fire",
+  "input": "Oak logs",
+  "confidence": "high"
+ },
+ {
+  "i": 36,
+  "output": "Fire",
+  "input": "Oak logs",
+  "confidence": "high"
+ },
+ {
+  "i": 37,
+  "output": "Fire",
+  "input": "Oak logs",
+  "confidence": "high"
+ },
+ {
+  "i": 38,
+  "output": "Fire",
+  "input": "Willow logs",
+  "confidence": "high"
+ },
+ {
+  "i": 39,
+  "output": "Fire",
+  "input": "Willow logs",
+  "confidence": "high"
+ },
+ {
+  "i": 40,
+  "output": "Fire",
+  "input": "Willow logs",
+  "confidence": "high"
+ },
+ {
+  "i": 41,
+  "output": "Fire",
+  "input": "Willow logs",
+  "confidence": "high"
+ },
+ {
+  "i": 42,
+  "output": "Fire",
+  "input": "Maple logs",
+  "confidence": "high"
+ },
+ {
+  "i": 43,
+  "output": "Fire",
+  "input": "Maple logs",
+  "confidence": "high"
+ },
+ {
+  "i": 44,
+  "output": "Fire",
+  "input": "Maple logs",
+  "confidence": "high"
+ },
+ {
+  "i": 45,
+  "output": "Fire",
+  "input": "Yew logs",
+  "confidence": "high"
+ },
+ {
+  "i": 46,
+  "output": "Fire",
+  "input": "Yew logs",
+  "confidence": "high"
+ },
+ {
+  "i": 47,
+  "output": "Fire",
+  "input": "Yew logs",
+  "confidence": "high"
+ },
+ {
+  "i": 48,
+  "output": "Fire",
+  "input": "Yew logs",
+  "confidence": "high"
+ },
+ {
+  "i": 63,
+  "spell": "Varrock Teleport",
+  "output": "Varrock Teleport"
+ },
+ {
+  "i": 64,
+  "spell": "Lumbridge Teleport",
+  "output": "Lumbridge Teleport"
+ },
+ {
+  "i": 65,
+  "spell": "Falador Teleport",
+  "output": "Falador Teleport"
+ },
+ {
+  "i": 66,
+  "output": "Games necklace (8)",
+  "confidence": "high"
+ },
+ {
+  "i": 89,
+  "output": "Dragon bones + Accursed ashes (buried, scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 84.5,
+    "ticks": null,
+    "materials": [
+     [
+      "Dragon bones",
+      1
+     ],
+     [
+      "Accursed ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 90,
+  "output": "Dragon bones + Impious ashes (buried, scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 76,
+    "ticks": null,
+    "materials": [
+     [
+      "Dragon bones",
+      1
+     ],
+     [
+      "Impious ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 91,
+  "output": "Dragon bones (buried)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 72,
+    "ticks": null,
+    "materials": [
+     [
+      "Dragon bones",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 92,
+  "output": "Baby dragon bones + Accursed ashes (buried, scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 42.5,
+    "ticks": null,
+    "materials": [
+     [
+      "Baby dragon bones",
+      1
+     ],
+     [
+      "Accursed ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 93,
+  "output": "Baby dragon bones + Impious ashes (buried, scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 34,
+    "ticks": null,
+    "materials": [
+     [
+      "Baby dragon bones",
+      1
+     ],
+     [
+      "Impious ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 94,
+  "output": "Baby dragon bones (buried)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 30,
+    "ticks": null,
+    "materials": [
+     [
+      "Baby dragon bones",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 95,
+  "output": "Big bones + Accursed ashes (buried, scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 27.5,
+    "ticks": null,
+    "materials": [
+     [
+      "Big bones",
+      1
+     ],
+     [
+      "Accursed ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 96,
+  "output": "Big bones + Impious ashes (buried, scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 19,
+    "ticks": null,
+    "materials": [
+     [
+      "Big bones",
+      1
+     ],
+     [
+      "Impious ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 97,
+  "output": "Bones + Accursed ashes (buried, scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 17.0,
+    "ticks": null,
+    "materials": [
+     [
+      "Bones",
+      1
+     ],
+     [
+      "Accursed ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 98,
+  "output": "Big bones (buried)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 15,
+    "ticks": null,
+    "materials": [
+     [
+      "Big bones",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 99,
+  "output": "Accursed ashes (scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 12.5,
+    "ticks": null,
+    "materials": [
+     [
+      "Accursed ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 100,
+  "output": "Bones + Impious ashes (buried, scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 8.5,
+    "ticks": null,
+    "materials": [
+     [
+      "Bones",
+      1
+     ],
+     [
+      "Impious ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 101,
+  "output": "Bones (buried)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 4.5,
+    "ticks": null,
+    "materials": [
+     [
+      "Bones",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 102,
+  "output": "Impious ashes (scattered)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 4,
+    "ticks": null,
+    "materials": [
+     [
+      "Impious ashes",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp)"
+ },
+ {
+  "i": 103,
+  "output": "Dragon bones (cremated)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 180,
+    "ticks": null,
+    "materials": [
+     [
+      "Dragon bones",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp); cremation Prayer xp (Firemaking side xp not counted)"
+ },
+ {
+  "i": 104,
+  "output": "Baby dragon bones (cremated)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 75,
+    "ticks": null,
+    "materials": [
+     [
+      "Baby dragon bones",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp); cremation Prayer xp (Firemaking side xp not counted)"
+ },
+ {
+  "i": 105,
+  "output": "Big bones (cremated)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 37.5,
+    "ticks": null,
+    "materials": [
+     [
+      "Big bones",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp); cremation Prayer xp (Firemaking side xp not counted)"
+ },
+ {
+  "i": 106,
+  "output": "Bones (cremated)",
+  "variants": [
+   {
+    "output_qty": 1,
+    "xp": 11.2,
+    "ticks": null,
+    "materials": [
+     [
+      "Bones",
+      1
+     ]
+    ]
+   }
+  ],
+  "source": "https://runescape.wiki/w/Bones, Big_bones, Baby_dragon_bones, Dragon_bones, Impious_ashes, Accursed_ashes (production data, buried/scattered xp); cremation Prayer xp (Firemaking side xp not counted)"
+ },
+ {
+  "i": 107,
+  "output": "Impious incense sticks",
+  "confidence": "high"
+ },
+ {
+  "i": 108,
+  "output": "Impious oak incense sticks",
+  "confidence": "high"
+ },
+ {
+  "i": 109,
+  "output": "Impious willow incense sticks",
+  "confidence": "high"
+ },
+ {
+  "i": 110,
+  "output": "Accursed maple incense sticks",
+  "confidence": "high"
+ }
+]

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your account - Rune Advisor</title>
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+  <meta name="api-base" content="https://api.runeadvisor.com">
+  <script src="/assets/account.js" defer></script>
+</head>
+<body>
+  <header class="site">
+    <a class="name" href="/">Rune Advisor</a>
+    <nav>
+      <a href="/docs/">Docs</a>
+      <a href="/docs/data/">What is sent</a>
+      <a href="/account/">Your account</a>
+      <a href="/privacy/">Privacy</a>
+      <a href="/terms/">Terms</a>
+    </nav>
+  </header>
+  <main>
+<h1>Your account</h1>
+<p>Paste an account key to see the account, manage its tokens or delete its data. The key stays in this page's
+memory only: it is not saved in the browser, not put in the address bar, and sent nowhere except to
+<code>api.runeadvisor.com</code>. Closing or reloading the page forgets it.</p>
+<noscript><div class="note">This page needs JavaScript: it talks to the API from your browser.</div></noscript>
+
+<section class="panel" id="signin">
+  <h2>Open an account</h2>
+  <form id="open-form" autocomplete="off">
+    <label for="key">Account key (or, if you lost it, the token from your plugin)</label>
+    <input class="secret" type="password" id="key" name="key" autocomplete="off" spellcheck="false" placeholder="raa_...">
+    <button class="primary" type="submit" id="open-button">Open</button>
+    <button type="button" id="create-button">Make a new account</button>
+  </form>
+  <!-- The bot check for "Make a new account" (Cloudflare Turnstile). Nothing is loaded from Cloudflare until
+       that button is pressed. The site key is public; a test key from Cloudflare's docs works on localhost. -->
+  <div id="bot-check" data-sitekey="0x4AAAAAAGADrb9K4AL2SmBu" hidden></div>
+  <p class="status" id="signin-status" role="status"></p>
+  <p class="muted">Making a new account runs a check that you are not a bot, provided by Cloudflare: only then
+  does this page contact Cloudflare. Opening an existing account never does.</p>
+  <div id="new-key" hidden>
+    <p><strong>This is your new account key. It is shown once and cannot be recovered.</strong> Save it
+    somewhere safe (a password manager) before going on.</p>
+    <div class="row">
+      <input class="secret" type="text" id="new-key-value" readonly aria-label="New account key">
+      <button type="button" data-copy="new-key-value">Copy</button>
+    </div>
+  </div>
+</section>
+
+<!-- Opened with a plugin's token instead of the account key: what that token posted, and deleting it. -->
+<section class="panel" id="token-view" hidden>
+  <h2>Opened with a plugin's token</h2>
+  <p>This is a plugin's token, not an account key. It cannot manage the account, but it can show and delete what
+  it posted. To get the token out of your plugin, use "Show the saved token" in the plugin's settings.</p>
+  <dl class="facts" id="token-facts"></dl>
+  <div class="scroll"><table id="token-posted">
+    <thead><tr><th>Character it posted for</th><th>Last post</th><th>Analysis</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+  <p class="muted" id="token-posted-none" hidden>This token has not posted for any character on record.</p>
+  <p class="muted">Analysis: optional, and off unless you allow it. If you allow it for a character, its data
+  may be analysed to improve the planner for everyone. Nothing more is sent either way, and the choice
+  covers what is already stored as well as what comes later: see the <a href="/privacy/">privacy policy</a>.
+  The plugin's settings show the same choice.</p>
+  <button type="button" class="danger" id="token-delete-button">Delete what this token posted</button>
+  <button type="button" id="token-forget-button">Close (forget the token)</button>
+  <p class="muted">Deleting removes those characters' stored data and revokes this token, so its plugin stops
+  posting. Characters posted by other tokens of the same account are not touched.</p>
+  <p class="status" id="token-view-status" role="status"></p>
+</section>
+
+<div id="account" hidden>
+  <section class="panel">
+    <h2>Account</h2>
+    <dl class="facts" id="facts"></dl>
+    <h3>Characters</h3>
+    <div class="scroll"><table id="players">
+      <thead><tr><th>Character</th><th>Last post</th><th>Posts</th><th>Analysis</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <p class="muted" id="no-players" hidden>No character has posted to this account yet.</p>
+    <p class="muted">Analysis: optional, and off unless you allow it. If you allow it for a character, its data
+    may be analysed to improve the planner for everyone. Nothing more is sent either way, and the choice
+    covers what is already stored as well as what comes later: see the <a href="/privacy/">privacy policy</a>.
+    The plugin's settings show the same choice.</p>
+    <p class="status" id="consent-status" role="status"></p>
+    <button type="button" id="forget-button">Close (forget the key)</button>
+  </section>
+
+  <section class="panel">
+    <h2>Tokens</h2>
+    <div class="scroll"><table id="tokens">
+      <thead><tr><th>Label</th><th>May</th><th>May read</th><th>Posts for</th><th>Starts with</th><th>Made</th><th>Last used</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <p class="muted" id="no-tokens" hidden>No tokens yet.</p>
+
+    <h3>Make a token</h3>
+    <form id="token-form" autocomplete="off">
+      <label for="token-label">Label</label>
+      <input type="text" id="token-label" maxlength="60" placeholder="plugin">
+      <label>Kind</label>
+      <label class="inline"><input type="radio" name="scope" value="submit" checked> submit (for the plugin)</label>
+      <label class="inline"><input type="radio" name="scope" value="read"> read (for the planner)</label>
+      <div id="characters-field" hidden>
+        <label for="token-characters">Only these characters (optional, separated by commas)</label>
+        <input type="text" id="token-characters" placeholder="leave empty for every character of the account">
+      </div>
+      <button class="primary" type="submit">Make token</button>
+    </form>
+    <div id="new-token" hidden>
+      <p><strong>This token is shown once.</strong> Copy it now.</p>
+      <div class="row">
+        <input class="secret" type="text" id="new-token-value" readonly aria-label="New token">
+        <button type="button" data-copy="new-token-value">Copy</button>
+      </div>
+    </div>
+    <p class="status" id="token-status" role="status"></p>
+  </section>
+
+  <section class="panel danger">
+    <h2>Delete data</h2>
+    <h3>One character</h3>
+    <form id="player-form" autocomplete="off">
+      <label for="player-name">Character name</label>
+      <input type="text" id="player-name" maxlength="12">
+      <button class="danger" type="submit">Delete this character's state</button>
+    </form>
+    <h3>The whole account</h3>
+    <p>Deletes the account, revokes every token and deletes the state of every character. This cannot be
+    undone. Plugins holding one of its tokens stop posting.</p>
+    <form id="delete-form" autocomplete="off">
+      <label for="delete-confirm">Type <kbd>DELETE</kbd> to confirm</label>
+      <input type="text" id="delete-confirm" autocomplete="off">
+      <button class="danger" type="submit">Delete the account and all its data</button>
+    </form>
+    <p class="status" id="delete-status" role="status"></p>
+  </section>
+</div>
+  </main>
+  <footer class="site">
+    <p>Rune Advisor is a fan-made tool. Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan Content Policy. This content is not endorsed by or affiliated with Jagex.</p>
+    <p>RuneScape is a
+    trademark of Jagex Ltd. Game data in the planner comes from the
+    <a href="https://runescape.wiki/">RuneScape Wiki</a> (CC BY-NC-SA 3.0).</p>
+    <p>Contact: <a href="mailto:support@runeadvisor.com">support@runeadvisor.com</a>.
+    Privacy: <a href="mailto:privacy@runeadvisor.com">privacy@runeadvisor.com</a>.</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,62 @@
+/* Rune Advisor site. Plain CSS, no build step, nothing loaded from other hosts. */
+:root {
+  color-scheme: light dark;
+  --bg: #fbfaf7; --fg: #1d1c1a; --muted: #5f5b53; --line: #d9d4c8; --panel: #f1eee6;
+  --accent: #7a4b12; --danger: #a12a1c; --ok: #2c6b2f;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #171614; --fg: #ebe7df; --muted: #a8a295; --line: #3a372f; --panel: #211f1b;
+          --accent: #e0a657; --danger: #f08a7b; --ok: #8fcf92; }
+}
+* { box-sizing: border-box; }
+html { font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
+body { margin: 0 auto; max-width: 46rem; padding: 0 1.2rem 4rem; }
+header.site { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem 1.4rem; padding: 1.4rem 0 1rem;
+              border-bottom: 1px solid var(--line); margin-bottom: 1.6rem; }
+header.site .name { font-weight: 700; font-size: 1.15rem; color: var(--fg); text-decoration: none; }
+header.site nav { display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; }
+a { color: var(--accent); }
+h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 .8rem; }
+h2 { font-size: 1.2rem; margin: 2rem 0 .5rem; }
+h3 { font-size: 1rem; margin: 1.4rem 0 .3rem; }
+p, ul, ol, table { margin: 0 0 1rem; }
+li { margin-bottom: .3rem; }
+code, kbd { font: .9em ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--panel);
+            padding: .08em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+.note, .draft { border: 1px solid var(--line); border-left-width: 4px; background: var(--panel);
+                padding: .7rem .9rem; border-radius: 4px; margin: 0 0 1.2rem; }
+.draft { border-left-color: var(--danger); }
+.open { background: var(--panel); border-bottom: 2px dotted var(--danger); }
+.review { border-bottom: 1px dashed var(--muted); }
+table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+th, td { text-align: left; vertical-align: top; padding: .4rem .6rem .4rem 0; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; }
+.scroll { overflow-x: auto; }
+footer.site { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); font-size: .85rem; color: var(--muted); }
+
+/* The account page */
+section.panel { border: 1px solid var(--line); border-radius: 6px; padding: 1rem 1.1rem; margin: 0 0 1.2rem; }
+section.panel > h2 { margin-top: 0; }
+section.danger { border-color: var(--danger); }
+label { display: block; font-weight: 600; margin: .7rem 0 .25rem; }
+label.inline { display: inline-block; font-weight: 400; margin: 0 1rem .4rem 0; }
+input[type=text], input[type=password] { width: 100%; font: inherit; padding: .45rem .55rem; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px; }
+input.secret { font-family: ui-monospace, Consolas, monospace; font-size: .9rem; }
+button { font: inherit; padding: .42rem .9rem; border-radius: 4px; border: 1px solid var(--line);
+         background: var(--panel); color: var(--fg); cursor: pointer; margin: .6rem .4rem 0 0; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+button.danger { border-color: var(--danger); color: var(--danger); }
+button:disabled { opacity: .5; cursor: default; }
+td button { margin: 0; padding: .2rem .6rem; font-size: .88rem; }
+.status { min-height: 1.5rem; margin: .6rem 0 0; }
+.status.error { color: var(--danger); }
+.status.ok { color: var(--ok); }
+.row { display: flex; gap: .5rem; align-items: stretch; }
+.row input { flex: 1; }
+.row button { margin: 0; white-space: nowrap; }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1.2rem; margin: 0 0 .5rem; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; }
+[hidden] { display: none !important; }

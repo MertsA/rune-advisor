@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accounts, keys and tokens - Rune Advisor</title>
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <header class="site">
+    <a class="name" href="/">Rune Advisor</a>
+    <nav>
+      <a href="/docs/">Docs</a>
+      <a href="/docs/data/">What is sent</a>
+      <a href="/account/">Your account</a>
+      <a href="/privacy/">Privacy</a>
+      <a href="/terms/">Terms</a>
+    </nav>
+  </header>
+  <main>
+<h1>Accounts, keys and tokens</h1>
+<p>There is no login. An account is a random <strong>key</strong>, and the key hands out <strong>tokens</strong>
+for the plugin and the planner. No email address or name is asked for or stored.</p>
+
+<h2>The account key</h2>
+<ul>
+  <li>Made once, on the <a href="/account/">account page</a>, and <strong>shown once</strong>. It starts with
+  <code>raa_</code>. The server keeps only a hash of it, so nobody can look it up for you later.</li>
+  <li>The key manages the account: it makes and revokes tokens and deletes data. It does not post or read
+  character data itself.</li>
+  <li><strong>If you lose the key</strong> it cannot be recovered. Your tokens keep working, but you can no
+  longer manage them. The token in your plugin can still delete what it posted: get it back with "Show the
+  saved token" in the plugin's settings and paste it into the <a href="/account/">account page</a> in place
+  of the key. Then make a new account and give the plugin a token from it; what is left of the old account
+  expires.</li>
+  <li>Keep it like a password. Anyone who has it can delete the account or make a token that reads your
+  characters.</li>
+</ul>
+
+<h2>Tokens</h2>
+<div class="scroll"><table>
+  <tr><th>Kind</th><th>Goes into</th><th>May</th><th>May not</th></tr>
+  <tr><td><code>submit</code></td><td>The plugin's settings</td><td>Post a character's state; show which characters it posted for, and delete
+      them (which also revokes it)</td>
+      <td>Read a character's data back. A leaked plugin token exposes nothing that was posted beyond those
+      characters' names, though whoever has it can delete what it posted.</td></tr>
+  <tr><td><code>read</code></td><td>The planner</td><td>Read the account's characters, or only the characters
+      you name when making it</td><td>Post or change anything</td></tr>
+</table></div>
+<ul>
+  <li>The site shows a token once. Give each one a label ("plugin", "laptop planner") so you can tell them
+  apart later.</li>
+  <li>The plugin can show its token again: "Show the saved token" in the plugin's settings puts it back in
+  the field for half a minute so you can copy it. That is the way to get a token back if you need it, for
+  example to prove an account is yours after losing its key.</li>
+  <li>For a group: make a <code>read</code> token limited to one character and give it to your group mate.
+  They see that character and nothing else of the account.</li>
+  <li>Revoking a token takes effect at once. A plugin holding a revoked token is told so, forgets it and stops
+  posting.</li>
+</ul>
+
+<h2>Limits and expiry</h2>
+<ul>
+  <li>Up to 10 characters and 20 live tokens per account.</li>
+  <li>A few new accounts per internet address per day.</li>
+  <li><strong>An account nobody uses for a year is deleted</strong>, with its tokens and every character's
+  state. "Use" means a plugin posting or a planner reading; opening the account page does not count.</li>
+</ul>
+
+<h2>Deleting</h2>
+<p>On the <a href="/account/">account page</a>, with the key: delete one character's state, or the whole
+account with every token and character. Deletion from the live service is immediate. What may remain for a
+time afterwards (backups, a record of the deletion) is listed in the
+<a href="/privacy/">privacy policy</a>.</p>
+  </main>
+  <footer class="site">
+    <p>Rune Advisor is a fan-made tool. Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan Content Policy. This content is not endorsed by or affiliated with Jagex.</p>
+    <p>RuneScape is a
+    trademark of Jagex Ltd. Game data in the planner comes from the
+    <a href="https://runescape.wiki/">RuneScape Wiki</a> (CC BY-NC-SA 3.0).</p>
+    <p>Contact: <a href="mailto:support@runeadvisor.com">support@runeadvisor.com</a>.
+    Privacy: <a href="mailto:privacy@runeadvisor.com">privacy@runeadvisor.com</a>.</p>
+  </footer>
+</body>
+</html>

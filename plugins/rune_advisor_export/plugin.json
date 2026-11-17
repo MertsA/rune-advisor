@@ -1,0 +1,15 @@
+{
+    "name": "Rune Advisor Export",
+    "version": "0.4.1",
+    "contactEmailAddress": "support@runeadvisor.com",
+    "requiredDependencies": {},
+    "optionalDependencies": {},
+    "requiredPermissions": [
+        "httpAccess"
+    ],
+    "optionalPermissions": [],
+    "urls": {
+        "api": "https://api.runeadvisor.com"
+    },
+    "hasSettingsIcon": true
+}

@@ -1,0 +1,107 @@
+# Rune Advisor Export
+
+*Text for the Plugin Hub (Mod.io) listing: everything below the line is the description. The same facts, in
+full, are at <https://runeadvisor.com/docs/data/>. The listing image is `../listing/rune-advisor-export.png`.*
+
+*Summary (10 to 150 ASCII characters; Jagex asks that it not repeat the plugin's name):*
+`Sends your character's skills, quests, achievements and items to your planner, which suggests what to do next. Changes nothing in the game.`
+
+---
+
+Sends your own character's progress to Rune Advisor, a free planner that suggests what to do next (quests,
+achievements, levels, gear) and how long it is likely to take for your account, ironman accounts included.
+
+**What it does.** Once you give it a token, the plugin posts your character's state to
+`https://api.runeadvisor.com`, the only address it talks to, so that your planner can read it. It sends the
+full state once per login and after that only what changed, at most once every few seconds.
+
+**What is sent.**
+- Your character's display name, experience in each skill, and whether you are on a members' world.
+- Quest and achievement progress: the player variables the game's quests and achievements test.
+- Your own item storage: bank, backpack, worn equipment, money and currency pouches, and the skilling
+  containers (ore box, wood box, herb bag, material storage and the like).
+- Balances and counters shown in the game's own interfaces, such as Slayer points, quest points, penguin
+  points and banked bonus experience.
+- After a game update, the game's own quest and achievement definitions that changed. That is game data, the
+  same for every player.
+
+**What is never read or sent.** Anything about other players; chat of any kind; where your character is, what
+you click or which keys you press; your Jagex account, login name or email address.
+
+**Nothing is sent until you set it up.**
+1. Make an account at <https://runeadvisor.com/account/>. An account is a random key: no email address, no
+   name, no password.
+2. Make a `submit` token there and paste it into this plugin's settings (the settings icon on the plugin in
+   the Plugin Hub's Manage tab). The plugin checks the token and says whether it was accepted.
+3. Log in to the game. Removing the token in the settings, or revoking it on the account page, stops all
+   posting, and the account page deletes everything stored.
+
+**One token covers the whole computer.** The game keeps plugin settings per computer, not per login, so a
+saved token sends every character played in that game client there, whoever is playing. On a shared
+computer, tell the others or remove the token when you finish.
+
+**Optional.** The settings also hold one choice, off unless you turn it on: whether this character's data may
+be analysed, without names or account details, to improve the planner for everyone. It changes nothing about
+what is sent.
+
+## Email
+
+The contact email address for this plugin is <support@runeadvisor.com>. For data protection matters you can
+also write to <privacy@runeadvisor.com>.
+
+## Feedback and collaboration
+
+Send feedback and bug reports to the email address above, or open an issue at
+<https://github.com/MertsA/rune-advisor>, where the plugin's source code is. Suggestions and pull requests are
+welcome there; whether a change is taken is the developer's decision, and a contribution to the plugin needs
+the licence grant described in that repository's `plugins/LICENSE.md`, so that it can be submitted to Jagex.
+
+## EULA
+
+This Plugin uses software licensed by Jagex to the developer under the terms of the Jagex End User Licence
+Agreement (EULA) found at <https://legal.jagex.com/docs/terms/eula> (and all terms incorporated into it by
+reference). The development and any use of the Plugin is at all times subject to the Jagex EULA.
+
+## Permissions
+
+### httpAccess
+
+This plugin requests the httpAccess permission for <https://api.runeadvisor.com>. This permission is used to
+send the information listed under "What is sent" to that address, where it is stored so that your planner can
+read it and suggest what to do next. The plugin contacts no other address and requests no other permission.
+
+## Data Protection
+
+This plugin uses the following information: the display name of the character that is logged in; its
+experience in each skill; whether it is on a members' world; the player variables that the game's quests and
+achievements test; a written-out list of other player variables (currencies, storages kept in variables,
+collection log entries, tool belt, bonus experience); and the item ids and quantities in the player's own item
+storage. It reads nothing about other players and no chat.
+
+This information is transmitted to <https://api.runeadvisor.com>, a server in the United States, which does
+not have full or relevant partial UK adequacy status as specified by
+<https://developer.runescape.com/rs/submission/adequacy.html>, however, Jagex and the Developer have put in
+place appropriate safeguards to protect your data. The developer's privacy notice is available at
+<https://runeadvisor.com/privacy/>.
+
+This endpoint secures the data by accepting HTTPS only (TLS 1.2 and 1.3), by authenticating every request with
+a token that is stored on the server only as a hash, by running the service as an isolated, unprivileged
+process, by limiting requests per address and per token, and by encrypting backups with a key that is not kept
+on the server. There are no logins, names, email addresses or passwords: an account is a random key. The
+information can be accessed by you, with a token of your own account, through the planner or the account page;
+and by the developer, who operates the server, only where running the service requires it. With your consent,
+given per character and off by default, a character's data may also be analysed without names or account
+details to improve the planner. All data rights requests should be submitted to the email address given above;
+you can also delete a character or the whole account yourself at <https://runeadvisor.com/account/>.
+
+Game information is not stored by the plugin between sessions, except the last state the server accepted for
+each character, which is kept so that only changes need sending. Plugin settings (the token and the posting
+interval the server asked for) are stored within the plugin between sessions. The client keeps these per
+computer, not per login: see "One token covers the whole computer" above.
+
+Privacy policy: <https://runeadvisor.com/privacy/>. Terms: <https://runeadvisor.com/terms/>.
+The copy of this plugin on the Plugin Hub comes to you under Jagex's and Mod.io's terms. Its source code is
+also published at <https://github.com/MertsA/rune-advisor>.
+
+Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan Content Policy.
+This content is not endorsed by or affiliated with Jagex.

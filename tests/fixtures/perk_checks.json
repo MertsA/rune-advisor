@@ -1,0 +1,2095 @@
+{
+ "source": "https://runescape.wiki perk pages (CC BY-NC-SA 3.0)",
+ "checks": [
+  {
+   "page": "Precise (perk)",
+   "materials": [
+    "Precise components",
+    "Precise components",
+    "Precise components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Timeworn components"
+   ],
+   "gizmo": "weapon",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Precise",
+     6,
+     6
+    ],
+    [
+     "Eruptive",
+     2,
+     2
+    ]
+   ],
+   "percent": 2.1
+  },
+  {
+   "page": "Precise (perk)",
+   "materials": [
+    "Precise components",
+    "Precise components",
+    "Precise components",
+    "Precise components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components"
+   ],
+   "gizmo": "weapon",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Precise",
+     6,
+     6
+    ],
+    [
+     "Eruptive",
+     1,
+     1
+    ]
+   ],
+   "percent": 45.81
+  },
+  {
+   "page": "Precise (perk)",
+   "materials": [
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Ilujankan components",
+    "Ilujankan components"
+   ],
+   "gizmo": "weapon",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Precise",
+     6,
+     6
+    ],
+    [
+     "Aftershock",
+     1,
+     1
+    ]
+   ],
+   "percent": 59.53
+  },
+  {
+   "page": "Precise (perk)",
+   "materials": [
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components",
+    "Timeworn components",
+    "Timeworn components"
+   ],
+   "gizmo": "weapon",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Precise",
+     6,
+     6
+    ],
+    [
+     "Ruthless",
+     1,
+     1
+    ]
+   ],
+   "percent": 56.39
+  },
+  {
+   "page": "Precise (perk)",
+   "materials": [
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components"
+   ],
+   "gizmo": "weapon",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Precise",
+     6,
+     6
+    ],
+    [
+     "Ultimatums",
+     4,
+     4
+    ]
+   ],
+   "percent": 1.06
+  },
+  {
+   "page": "Precise (perk)",
+   "materials": [
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components"
+   ],
+   "gizmo": "weapon",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Precise",
+     6,
+     6
+    ],
+    [
+     "Genocidal",
+     1,
+     99
+    ]
+   ],
+   "percent": 18.95
+  },
+  {
+   "page": "Precise (perk)",
+   "materials": [
+    "Precise components",
+    "Precise components",
+    "Precise components",
+    "Precise components",
+    "Precise components"
+   ],
+   "gizmo": "weapon",
+   "ancient": false,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Precise",
+     4,
+     4
+    ],
+    [
+     "Eruptive",
+     2,
+     2
+    ]
+   ],
+   "percent": 0.16
+  },
+  {
+   "page": "Precise (perk)",
+   "materials": [
+    "Precise components",
+    "Precise components",
+    "Armadyl components",
+    "Armadyl components",
+    "Armadyl components"
+   ],
+   "gizmo": "weapon",
+   "ancient": false,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Precise",
+     5,
+     5
+    ],
+    [
+     "Eruptive",
+     1,
+     1
+    ]
+   ],
+   "percent": 1.5
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Smooth parts",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Preservationist",
+     5,
+     5
+    ]
+   ],
+   "percent": 77.85
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Honed",
+     6,
+     6
+    ]
+   ],
+   "percent": 84.06
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Hasty",
+     5,
+     5
+    ]
+   ],
+   "percent": 84.97
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components",
+    "Historic components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Imp Souled",
+     6,
+     6
+    ]
+   ],
+   "percent": 39.4
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Fortune",
+     3,
+     3
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 76.29
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Furnace",
+     4,
+     4
+    ]
+   ],
+   "percent": 98.32
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Simple parts"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Naturalist",
+     5,
+     5
+    ]
+   ],
+   "percent": 80.53
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Careless",
+     5,
+     5
+    ]
+   ],
+   "percent": 84.7
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Vintage components",
+    "Timeworn components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Preservationist",
+     5,
+     5
+    ],
+    [
+     "Fortune",
+     2,
+     2
+    ]
+   ],
+   "percent": 30.79
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Clockwork components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 112,
+   "potion": "none",
+   "want": [
+    [
+     "Hasty",
+     5,
+     5
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 9.33
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Zamorak components",
+    "Zamorak components",
+    "Zamorak components",
+    "Zamorak components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Fortune",
+     2,
+     3
+    ],
+    [
+     "Imp Souled",
+     2,
+     3
+    ]
+   ],
+   "percent": 60.63
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Fortune",
+     3,
+     3
+    ],
+    [
+     "Naturalist",
+     2,
+     3
+    ]
+   ],
+   "percent": 21.71
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Furnace",
+     4,
+     4
+    ],
+    [
+     "Naturalist",
+     2,
+     2
+    ]
+   ],
+   "percent": 40.93
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Simple parts"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Naturalist",
+     5,
+     5
+    ],
+    [
+     "Scraps",
+     1,
+     99
+    ]
+   ],
+   "percent": 54.58
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Careless",
+     5,
+     5
+    ]
+   ],
+   "percent": 84.72
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Furnace",
+     4,
+     4
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 66.79
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "super",
+   "want": [
+    [
+     "Furnace",
+     4,
+     4
+    ],
+    [
+     "Explosive",
+     1,
+     99
+    ]
+   ],
+   "percent": 20.85
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Careless",
+     4,
+     5
+    ],
+    [
+     "Explosive",
+     1,
+     99
+    ]
+   ],
+   "percent": 12.65
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Preservationist",
+     5,
+     5
+    ],
+    [
+     "Honed",
+     6,
+     6
+    ]
+   ],
+   "percent": 0.9127
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Zamorak components",
+    "Zamorak components",
+    "Zamorak components",
+    "Zamorak components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Fortune",
+     3,
+     3
+    ],
+    [
+     "Imp Souled",
+     3,
+     3
+    ]
+   ],
+   "percent": 8.56
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Classic components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Hasty",
+     5,
+     5
+    ],
+    [
+     "Fortune",
+     2,
+     2
+    ]
+   ],
+   "percent": 27.77
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Third-age components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Honed",
+     6,
+     6
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 17.17
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Clockwork components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Hasty",
+     5,
+     5
+    ],
+    [
+     "Fortune",
+     2,
+     2
+    ]
+   ],
+   "percent": 28.02
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Clear parts",
+    "Offcut components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Hasty",
+     5,
+     5
+    ],
+    [
+     "Preservationist",
+     5,
+     5
+    ]
+   ],
+   "percent": 1.752
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Fortune",
+     3,
+     3
+    ],
+    [
+     "Naturalist",
+     3,
+     3
+    ]
+   ],
+   "percent": 6.32
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Furnace",
+     4,
+     4
+    ],
+    [
+     "Naturalist",
+     3,
+     3
+    ]
+   ],
+   "percent": 3.3
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components",
+    "Silent components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Honed",
+     6,
+     6
+    ],
+    [
+     "Fortune",
+     1,
+     1
+    ]
+   ],
+   "percent": 4.32
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Careless",
+     5,
+     5
+    ],
+    [
+     "Naturalist",
+     5,
+     5
+    ]
+   ],
+   "percent": 1.741
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Vintage components",
+    "Seren components",
+    "Seren components",
+    "Seren components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Furnace",
+     4,
+     4
+    ],
+    [
+     "Wise",
+     2,
+     2
+    ]
+   ],
+   "percent": 41.54
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Careless",
+     5,
+     5
+    ],
+    [
+     "Explosive",
+     1,
+     99
+    ]
+   ],
+   "percent": 3.575
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Careless",
+     5,
+     5
+    ],
+    [
+     "Fortune",
+     2,
+     2
+    ]
+   ],
+   "percent": 3.568
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Offcut components",
+    "Offcut components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Fortune",
+     3,
+     3
+    ],
+    [
+     "Scraps",
+     1,
+     99
+    ]
+   ],
+   "percent": 14.5
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Resilient components",
+    "Resilient components",
+    "Resilient components",
+    "Resilient components",
+    "Resilient components",
+    "Resilient components",
+    "Resilient components",
+    "Resilient components",
+    "Resilient components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Refined",
+     4,
+     4
+    ]
+   ],
+   "percent": 77.59
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Naturalist",
+     5,
+     5
+    ],
+    [
+     "Explosive",
+     1,
+     99
+    ]
+   ],
+   "percent": 2.954
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 19,
+   "potion": "none",
+   "want": [
+    [
+     "Tinker",
+     4,
+     4
+    ]
+   ],
+   "percent": 98.45
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Explosive components",
+    "Explosive components",
+    "Explosive components",
+    "Explosive components",
+    "Explosive components",
+    "Explosive components",
+    "Explosive components",
+    "Explosive components",
+    "Explosive components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Pyromaniac",
+     6,
+     6
+    ]
+   ],
+   "percent": 73.14
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Rapid",
+     4,
+     4
+    ]
+   ],
+   "percent": 69.12
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Evasive components",
+    "Evasive components",
+    "Evasive components",
+    "Evasive components"
+   ],
+   "gizmo": "tool",
+   "ancient": false,
+   "level": 120,
+   "potion": "none",
+   "want": [
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 100.0
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Fungal components",
+    "Fungal components",
+    "Fungal components",
+    "Fungal components",
+    "Fungal components",
+    "Fungal components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "none",
+   "want": [
+    [
+     "Tinker",
+     4,
+     4
+    ]
+   ],
+   "percent": 60.19
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Light components",
+    "Light components",
+    "Light components",
+    "Light components",
+    "Light components",
+    "Light components",
+    "Light components",
+    "Explosive components",
+    "Explosive components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Pyromaniac",
+     6,
+     6
+    ],
+    [
+     "Rapid",
+     2,
+     2
+    ]
+   ],
+   "percent": 6.599
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Timeworn components",
+    "Timeworn components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 112,
+   "potion": "none",
+   "want": [
+    [
+     "Careless",
+     5,
+     5
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 2.65
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Third-age components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 42,
+   "potion": "none",
+   "want": [
+    [
+     "Careless",
+     5,
+     5
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 49.24
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Polishing",
+     4,
+     4
+    ]
+   ],
+   "percent": 23.61
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Third-age components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 42,
+   "potion": "none",
+   "want": [
+    [
+     "Tinker",
+     4,
+     4
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 49.24
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Fungal components",
+    "Fungal components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Offcut components",
+    "Clockwork components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 110,
+   "potion": "none",
+   "want": [
+    [
+     "Careless",
+     5,
+     5
+    ],
+    [
+     "Tinker",
+     2,
+     2
+    ]
+   ],
+   "percent": 0.6438
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Third-age components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 116,
+   "potion": "none",
+   "want": [
+    [
+     "Rapid",
+     4,
+     4
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 3.803
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components",
+    "Shifting components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Rapid",
+     4,
+     4
+    ],
+    [
+     "Efficient",
+     4,
+     4
+    ]
+   ],
+   "percent": 5.46
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Evasive components",
+    "Third-age components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "none",
+   "want": [
+    [
+     "Wise",
+     4,
+     4
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 21.98
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Third-age components",
+    "Dextrous components",
+    "Oceanic components",
+    "Oceanic components",
+    "Oceanic components",
+    "Oceanic components",
+    "Oceanic components",
+    "Oceanic components",
+    "Oceanic components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "none",
+   "want": [
+    [
+     "Polishing",
+     4,
+     4
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 22.23
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Evasive components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Enlightened",
+     4,
+     4
+    ],
+    [
+     "Wise",
+     4,
+     4
+    ]
+   ],
+   "percent": 18.38
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Enhanced Efficient",
+     4,
+     4
+    ]
+   ],
+   "percent": 68.39
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Ethereal components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Wild Runes",
+     5,
+     5
+    ],
+    [
+     "Wise",
+     2,
+     2
+    ]
+   ],
+   "percent": 16.53
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Timeworn components",
+    "Timeworn components",
+    "Timeworn components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 113,
+   "potion": "none",
+   "want": [
+    [
+     "Wild Runes",
+     5,
+     5
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 10.12
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "none",
+   "want": [
+    [
+     "Wise",
+     4,
+     4
+    ]
+   ],
+   "percent": 100.0
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Wise",
+     4,
+     4
+    ]
+   ],
+   "percent": 23.6
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Undead components",
+    "Undead components",
+    "Undead components",
+    "Undead components",
+    "Undead components",
+    "Undead components",
+    "Undead components",
+    "Undead components",
+    "Undead components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Breakdown",
+     6,
+     6
+    ]
+   ],
+   "percent": 89.95
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components",
+    "Protective components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 56,
+   "potion": "extreme",
+   "want": [
+    [
+     "Polishing",
+     4,
+     4
+    ]
+   ],
+   "percent": 23.61
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Delicate parts",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components"
+   ],
+   "gizmo": "tool",
+   "ancient": false,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Oblivious",
+     1,
+     99
+    ]
+   ],
+   "percent": 61.43
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Smooth parts",
+    "Clear parts",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components"
+   ],
+   "gizmo": "tool",
+   "ancient": false,
+   "level": 27,
+   "potion": "none",
+   "want": [
+    [
+     "Oblivious",
+     1,
+     99
+    ]
+   ],
+   "percent": 99.03
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Evasive components",
+    "Evasive components",
+    "Evasive components",
+    "Evasive components"
+   ],
+   "gizmo": "tool",
+   "ancient": false,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 100.0
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Evasive components",
+    "Evasive components",
+    "Evasive components",
+    "Evasive components",
+    "Evasive components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components",
+    "Manufactured components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 21,
+   "potion": "none",
+   "want": [
+    [
+     "Oblivious",
+     1,
+     99
+    ],
+    [
+     "Prosper",
+     1,
+     99
+    ]
+   ],
+   "percent": 25.83
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components",
+    "Pious components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Enlightened",
+     3,
+     3
+    ]
+   ],
+   "percent": 7.46
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Classic components",
+    "Classic components",
+    "Classic components",
+    "Classic components",
+    "Classic components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Efficient",
+     4,
+     4
+    ]
+   ],
+   "percent": 74.74
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components",
+    "Clockwork components"
+   ],
+   "gizmo": "tool",
+   "ancient": true,
+   "level": 120,
+   "potion": "extreme",
+   "want": [
+    [
+     "Enhanced Efficient",
+     4,
+     4
+    ]
+   ],
+   "percent": 68.39
+  },
+  {
+   "page": "Optimal skilling perk setup",
+   "materials": [
+    "Seren components",
+    "Seren components",
+    "Flexible parts",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Seren components",
+    "Dextrous components",
+    "Subtle components"
+   ],
+   "gizmo": "weapon",
+   "ancient": true,
+   "level": 120,
+   "potion": "none",
+   "want": [
+    [
+     "Wise",
+     4,
+     4
+    ],
+    [
+     "Mobile",
+     1,
+     99
+    ]
+   ],
+   "percent": 56.39
+  }
+ ]
+}

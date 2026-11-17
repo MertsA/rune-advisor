@@ -1,0 +1,18 @@
+# Manual corrections and settings the planner cannot read from the game. Copy to overrides.toml and edit.
+# Every table is optional. Item names are the RuneScape Wiki's page names.
+
+# What the shared Group Ironman storage holds (it is not exported by the plugin).
+# [group_storage]
+# "Flax" = 5000
+
+[players.YourName]
+# Items the gear track should cost as goals whatever their damage gain.
+# wanted = ["Deathdealer robe top (tier 80)"]
+# Items saved for goals the planner does not model: taken out of what plans may use.
+# reserve = { "Red sandstone" = 2400 }
+# rested_xp = 1500
+# penguin_points = 184
+# outfit_pieces_left = { Thieving = 6 }
+
+# [players.YourName.boosts]
+# banner = "Zaros"

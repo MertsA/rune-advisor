@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <!-- Plugin Hub listing image, 16:9. Our own mark and text only: no Jagex artwork or logo. -->
+  <rect width="1280" height="720" fill="#171614"/>
+  <rect x="0" y="0" width="1280" height="10" fill="#e0a657"/>
+  <!-- the site's mark (site/assets/icon.svg), scaled -->
+  <g transform="translate(120 150) scale(5.5)">
+    <rect width="32" height="32" rx="6" fill="#7a4b12"/>
+    <path d="M9 24V8h8a5 5 0 0 1 1.6 9.7L23 24h-3.6l-4-6H12v6zm3-9h4.6a2 2 0 0 0 0-4H12z" fill="#fbfaf7"/>
+  </g>
+  <g font-family="Liberation Sans, Arial, Helvetica, sans-serif" fill="#ebe7df">
+    <text x="340" y="232" font-size="88" font-weight="700">Rune Advisor</text>
+    <text x="340" y="312" font-size="56" fill="#e0a657">Export</text>
+    <text x="120" y="452" font-size="44">Your character's progress, sent to your planner.</text>
+    <text x="120" y="520" font-size="34" fill="#a8a295">Skills, quests, achievements and your own items.</text>
+    <text x="120" y="568" font-size="34" fill="#a8a295">Nothing is sent until you add a token.</text>
+    <text x="120" y="656" font-size="30" fill="#a8a295">runeadvisor.com</text>
+  </g>
+</svg>
