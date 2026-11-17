@@ -195,6 +195,9 @@ var = { VarPlayer = configTable({
     { id = 17, configName = "SMKI_SLAYER_POINTS", value = 610 },  -- Slayer points balance
     { id = 18, configName = "PVM_HUB_CAMPFIRE_STATE", value = 6 },  -- War's Retreat campfire: elder (assumed encoding)
     { id = 19, configName = "BONUSXP_ATTACK", value = 25000 },  -- banked bonus xp
+    { id = 21, configName = "SLAYER_TARGET", value = 42 },  -- Slayer assignment: abyssal demons, 37 left, from Kuradal
+    { id = 22, configName = "SLAYER_COUNT", value = 37 },
+    { id = 23, configName = "SLAYER_MASTER", value = 6 },
     { id = 20, configName = "BONUSXP_ATTACK_STORED", value = 0 },
     questVar, tallyVar, flagVar, nullVar, baseVar,
 }), VarClient = configTable({

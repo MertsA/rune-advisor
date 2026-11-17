@@ -55,7 +55,7 @@ local configsync = require("lib/configsync")
 
 -- Sent with every full post, so the server knows which protocol it is talking to (the API exposes no
 -- game or plugin version, so this is kept by hand; bump it with plugin.json: a test checks they match).
-local PLUGIN_VERSION = "0.4.1"
+local PLUGIN_VERSION = "0.4.2"
 
 -- PersistentDB rejects large strings, so big values (the acknowledged wire state) are split into numbered
 -- chunks: "<key>#1", "<key>#2", ... plus a header stored at "<key>" itself: {"chunks": N}.

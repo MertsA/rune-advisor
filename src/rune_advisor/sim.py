@@ -17,7 +17,7 @@ the rock's multiplier x 0.4. The play style (method) scales it: Semi-AFK keeps 9
 add extra damage on core rocks.
 
 Tools come from the player's items (a hatchet/pickaxe in the bank or worn), else overrides.toml
-(`hatchet = "Crystal"`, `pickaxe = "Crystal"`; tool-belt tools aren't exported), else the best tool
+(`hatchet = "Crystal"`, `pickaxe = "Crystal"`), else the tool belt's (the export's TOOLBELT_*_LEVEL), else the best tool
 for the level is assumed and the result says so.
 
 Boosts (mechanics/profile.py): Mining applies the wiki calculator's own boost terms from Module:MS Data

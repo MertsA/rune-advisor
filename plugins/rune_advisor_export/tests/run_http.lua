@@ -112,7 +112,7 @@ assert(mock.store["settings:apiToken"] == "tok-abc123" and settings.problem == n
 -- (In the mock the tick handlers run in no fixed order, so the post lands on this tick or the next.)
 if #apiPosts() == 0 then ticks(1) end
 assert(#apiPosts() == 1 and kinds() == "full", "the full state goes out as soon as the token is accepted: " .. kinds())
-assert(apiPosts()[1].body:find('"configs":' .. layout.fingerprint, 1, true) and apiPosts()[1].body:find('"plugin":"0.4.1"', 1, true),
+assert(apiPosts()[1].body:find('"configs":' .. layout.fingerprint, 1, true) and apiPosts()[1].body:find('"plugin":"0.4.2"', 1, true),
     "the full post names the config fingerprint and the plugin version")
 ticks(40)  -- the config walk runs as jobs, then the upload goes out
 local upload = apiPosts()[2]

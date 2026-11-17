@@ -4821,3 +4821,31 @@ def test_free_xp_places_unbankable_and_capped_bonus_xp(monkeypatch):
     assert "rested xp" in {r.name for r in picker.without_choice(load_pool(p)).resources if r.units}
     p.members = False  # bonus xp can't be used on free-to-play
     assert free_xp.FreeXpTrack.candidates(ctx) == []
+
+
+def test_tool_belt_tools_and_slayer_task_come_from_the_export():
+    """TOOLBELT_*_LEVEL name the pickaxe and hatchet on the belt (the wiki's value tables), so the sims stop
+    assuming one; overrides still win. SLAYER_TARGET / COUNT / MASTER give the current assignment."""
+    from rune_advisor import player as players, sim
+    from rune_advisor.models import Skill
+
+    p = PlayerState(name="PlayerOne", skills={"Mining": Skill("Mining", 99, xp_for_level(99)),
+                                              "Woodcutting": Skill("Woodcutting", 99, xp_for_level(99))})
+    assert sim.best_pickaxe(p)[1] and sim.best_hatchet(p)[1]  # nothing known: assumed
+    players.apply_plugin_snapshot(p, {"schema": 1, "vars": {
+        "TOOLBELT_PICKAXE_LEVEL": 29, "TOOLBELT_HATCHET_LEVEL": 7,
+        "SLAYER_TARGET": 42, "SLAYER_COUNT": 37, "SLAYER_MASTER": 6}})
+    assert p.tools == {"pickaxe": "Crystal", "hatchet": "Dragon"}
+    assert sim.best_pickaxe(p) == (next(x for x in sim.data()["picks"] if x["label"] == "Crystal"), False)
+    assert sim.best_hatchet(p)[0]["label"] == "Dragon" and not sim.best_hatchet(p)[1]
+    assert p.slayer_task == ("Abyssal Demons", 37, "Kuradal")
+    assert any(n.startswith("Slayer task: 37 Abyssal Demons left (from Kuradal)") for n in p.notes)
+    assert players.belt_tools({"TOOLBELT_PICKAXE_LEVEL": 24}) == {"pickaxe": "Dragon"}  # gilded: the same tool
+    assert players.belt_tools({"TOOLBELT_HATCHET_LEVEL": 14}) == {"hatchet": "Ember and glade"}
+    assert players.slayer_task_from_vars({"SLAYER_TARGET": 0, "SLAYER_COUNT": 0}) is None
+    # Every value the tables name is a tool the sims know.
+    values = players._var_values()
+    assert {players.belt_tools({"TOOLBELT_PICKAXE_LEVEL": int(v)})["pickaxe"] for v in values["TOOLBELT_PICKAXE_LEVEL"]} \
+        <= {x["label"] for x in sim.data()["picks"]}
+    assert {players.belt_tools({"TOOLBELT_HATCHET_LEVEL": int(v)})["hatchet"] for v in values["TOOLBELT_HATCHET_LEVEL"]} \
+        <= {x["label"] for x in sim.data()["hatchets"]}

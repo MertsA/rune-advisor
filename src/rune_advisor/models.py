@@ -97,8 +97,12 @@ class PlayerState:
     outfit_pieces_left: dict[str, int] = field(default_factory=dict)
     # Outfits whose fragment blueprint is bought (wiki skill names), from overrides.toml where no var shows it.
     outfit_blueprints: set[str] = field(default_factory=set)
-    # Tools the export can't see (tool belt), from overrides.toml: {"hatchet": "Crystal", "pickaxe": ...}.
+    # The hatchet and pickaxe on the tool belt, as the sims label tools ("Crystal", "Primal + 5"): from the export's
+    # TOOLBELT_*_LEVEL vars, else overrides.toml ({"hatchet": "Crystal", "pickaxe": ...}), which wins.
     tools: dict[str, str] = field(default_factory=dict)
+    # The current Slayer assignment from the export: (creatures, kills left, master), None when none is held
+    # or the export doesn't carry it.
+    slayer_task: tuple[str, int, str | None] | None = None
     # Boosts the export can't see (perks, familiars, consumables kept up), from overrides.toml
     # [players.<name>.boosts]; see mechanics/profile.py.
     boosts: dict = field(default_factory=dict)

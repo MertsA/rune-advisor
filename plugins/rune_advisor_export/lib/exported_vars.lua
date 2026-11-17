@@ -20,6 +20,11 @@ M.NAMES = {
     "DINO_GAME_HUNTER_MARKS",                  -- Hunter marks (Anachronia Hunter Mark Shop currency)
     "DINO_GAME_SHOP_ELITE_OUTFIT_BLUEPRINT",   -- trapper outfit blueprint bought from that shop
     "SMKI_SLAYER_POINTS",                      -- Slayer points
+    -- The current Slayer assignment, as the Slayer counter shows it
+    "SLAYER_TARGET",                           -- which creatures (0 = no assignment)
+    "SLAYER_COUNT",                            -- kills left
+    "SLAYER_MASTER",                           -- the master who gave it
+    "BSLAY_KILLS_LEFT",                        -- boss kills left on a Soul Reaper assignment
     "PVM_HUB_CURRENCY",                        -- Marks of War (War's Retreat)
     "PVM_HUB_MARK_CAP_AMOUNT",                 -- Marks of War earned toward the daily cap
     "RAID1_GOEBIE_REP",                        -- Mazcab (goebie) reputation

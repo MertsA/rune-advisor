@@ -7,6 +7,7 @@ Order: hiscores (skills, RuneScore) -> Adventurer's Log quest list -> Adventurer
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 from datetime import datetime
 from pathlib import Path
@@ -261,6 +262,40 @@ def penguin_points_from_var(variables: dict) -> int | None:
 BONUS_XP_UNIT = 10  # var units per xp
 
 
+@cache
+def _var_values() -> dict[str, dict[str, str]]:
+    """What the values of some variables stand for (data/var_values.json, from the wiki's Vars Project)."""
+    try:
+        return json.loads(datapkg.path("var_values.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def belt_tools(variables: dict) -> dict[str, str]:
+    """The pickaxe and hatchet on the tool belt, as the sims label tools: TOOLBELT_PICKAXE_LEVEL 53 is a
+    "Primal pickaxe + 5" -> "Primal + 5", "Hatchet of ember and glade" -> "Ember and glade". A gilded pickaxe
+    mines like the plain one. Everyone's belt has a tool (bronze at worst), so a value is always a tool."""
+    found = {}
+    for tool, var in (("pickaxe", "TOOLBELT_PICKAXE_LEVEL"), ("hatchet", "TOOLBELT_HATCHET_LEVEL")):
+        value = variables.get(var)
+        name = (_var_values().get(var) or {}).get(str(value)) if isinstance(value, int) else None
+        if name:
+            label = re.sub(rf"(?i)^{tool} of |\b{tool}\b|^gilded ", "", name)
+            found[tool] = " ".join(label.split()).capitalize() if label.strip() else name
+    return found
+
+
+def slayer_task_from_vars(variables: dict) -> tuple[str, int, str | None] | None:
+    """(creatures, kills left, master) of the current Slayer assignment: SLAYER_TARGET names the creatures (0 =
+    none), SLAYER_COUNT the kills left, SLAYER_MASTER who gave it."""
+    target, left = variables.get("SLAYER_TARGET"), variables.get("SLAYER_COUNT")
+    if not isinstance(target, int) or target <= 0 or not isinstance(left, int) or left <= 0:
+        return None
+    values = _var_values()
+    creatures = (values.get("SLAYER_TARGET") or {}).get(str(target)) or f"assignment {target}"
+    return creatures, left, (values.get("SLAYER_MASTER") or {}).get(str(variables.get("SLAYER_MASTER")))
+
+
 def campfire_tier_from_var(variables: dict) -> str | None:
     from .drops import CAMPFIRE_TIERS
     value = variables.get(CAMPFIRE_STATE_VAR)
@@ -477,6 +512,12 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
     for currency, var_name in CURRENCY_VARS.items():
         if isinstance(p.vars.get(var_name), int) and p.vars[var_name] >= 0:
             p.currencies[currency] = p.vars[var_name]
+    for tool, label in belt_tools(p.vars).items():
+        p.tools[tool] = label  # overrides.toml's  /  still win
+    if (task := slayer_task_from_vars(p.vars)) is not None:
+        p.slayer_task = task
+        creatures, left, master = task
+        p.notes.append(f"Slayer task: {left:,} {creatures} left" + (f" (from {master})" if master else ""))
     if (tier := campfire_tier_from_var(p.vars)) is not None:
         p.campfire_tier = tier  # overrides.toml's `campfire` still wins (applied after the snapshot)
     if (points := penguin_points_from_var(p.vars)) is not None:
