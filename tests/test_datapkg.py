@@ -3,7 +3,9 @@
 import hashlib
 import io
 import json
+import os
 import tarfile
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -325,3 +327,19 @@ def test_package_not_newer_than_bundled_data_is_ignored(env, monkeypatch):
     monkeypatch.setattr(datapkg, "bundled_version", lambda: "2026.10.01")
     datapkg.reset()
     assert datapkg.active().source == "package"
+
+
+def test_user_folders_for_an_installed_app(tmp_path, monkeypatch):
+    """A checkout reads settings from the working directory; an installed app from the user's settings folder,
+    unless the file is in the working directory."""
+    monkeypatch.chdir(tmp_path)
+    assert config.CHECKOUT is not None and config.user_file("rune_advisor.toml") == Path("rune_advisor.toml")
+    monkeypatch.setattr(config, "CHECKOUT", None)
+    assert config.user_file("overrides.toml") == config.CONFIG_DIR / "overrides.toml"
+    (tmp_path / "overrides.toml").write_text("")
+    assert config.user_file("overrides.toml") == Path("overrides.toml")
+    if os.name != "nt":
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "st"))
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        assert config._user_dir("state") == tmp_path / "st" / "rune-advisor"
+        assert config._user_dir("config") == Path.home() / ".config" / "rune-advisor"

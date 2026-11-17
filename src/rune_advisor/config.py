@@ -20,25 +20,48 @@ _STEAM_RS = _STEAM / "steamapps" / "common" / "RuneScape"
 DEFAULT_PLUGIN_DB = _STEAM_RS / "RuneScape" / "plugins" / "PluginData.db"
 BETA_PLUGIN_DB = _STEAM_RS / "RuneScape-BETA" / "plugins" / "PluginData.db"
 
-CACHE_DIR = Path(os.environ.get("RUNE_ADVISOR_CACHE", Path.home() / ".cache" / "rune-advisor"))
-# Kept state (archived snapshots, seen outfit pieces, the tile store, the API snapshot cache). It lives in the
-# checkout (state/, gitignored) so planner runs inside the agentbox sandbox and on the host share it; it was
-# ~/.local/share/rune-advisor until 2026-11-04 and would move back there if this were ever packaged.
-STATE_DIR = Path(os.environ.get("RUNE_ADVISOR_STATE", Path(__file__).resolve().parents[2] / "state"))
+# The source checkout this module runs from, or None for an installed or frozen app (AppImage, Windows build,
+# a wheel in site-packages). A checkout keeps its state and settings in the working tree; an installed app
+# keeps them in the user's own folders.
+_ROOT = Path(__file__).resolve().parents[2]
+CHECKOUT: Path | None = (_ROOT if not getattr(sys, "frozen", False) and (_ROOT / "pyproject.toml").exists()
+                         else None)
+
+
+def _user_dir(kind: str) -> Path:
+    """The per-user folder for `kind` ("config", "data", "state" or "cache").
+
+    Linux: the XDG base directories (~/.config, ~/.local/share, ~/.local/state, ~/.cache) + rune-advisor.
+    Windows: %APPDATA%\\rune-advisor for settings (roams), %LOCALAPPDATA%\\rune-advisor\\<kind> for the rest.
+    """
+    if os.name == "nt":
+        if kind == "config":
+            return Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "rune-advisor"
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "rune-advisor" / kind
+    env, fallback = {"config": ("XDG_CONFIG_HOME", ".config"), "data": ("XDG_DATA_HOME", ".local/share"),
+                     "state": ("XDG_STATE_HOME", ".local/state"), "cache": ("XDG_CACHE_HOME", ".cache")}[kind]
+    return Path(os.environ.get(env) or Path.home() / fallback) / "rune-advisor"
+
+
+CONFIG_DIR = _user_dir("config")
+CACHE_DIR = Path(os.environ.get("RUNE_ADVISOR_CACHE") or _user_dir("cache"))
+# Kept state (archived snapshots, seen outfit pieces, the tile store, the API snapshot cache). In a checkout it
+# lives in the tree (state/, gitignored) so planner runs inside the agentbox sandbox and on the host share it;
+# an installed app keeps it in the user's state folder.
+STATE_DIR = Path(os.environ.get("RUNE_ADVISOR_STATE") or (CHECKOUT / "state" if CHECKOUT else _user_dir("state")))
 ARCHIVE_DIR = STATE_DIR / "archive"
 
-
-def _default_data_home() -> Path:
-    """Where installed data packages live: %LOCALAPPDATA% on Windows, the XDG data dir elsewhere."""
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
-    else:
-        base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
-    return base / "rune-advisor" / "data"
-
-
 # Installed data packages (rune_advisor.datapkg), apart from the kept planner state above.
-DATA_HOME = Path(os.environ.get("RUNE_ADVISOR_DATA_HOME") or _default_data_home())
+# ~/.local/share/rune-advisor/data, %LOCALAPPDATA%\\rune-advisor\\data.
+DATA_HOME = Path(os.environ.get("RUNE_ADVISOR_DATA_HOME")
+                 or (_user_dir("data") if os.name == "nt" else _user_dir("data") / "data"))
+
+
+def user_file(name: str) -> Path:
+    """Where a settings file (rune_advisor.toml, overrides.toml) is read from: the working directory when it
+    is there or when running from a checkout (as the CLI always did), else the user's settings folder."""
+    local = Path(name)
+    return local if CHECKOUT or local.exists() else CONFIG_DIR / name
 
 
 @dataclass
@@ -119,7 +142,7 @@ def _path(value: str, config: Path) -> Path:
 
 
 def load_settings(path: Path | None = None, beta: bool = False) -> Settings:
-    path = path or Path(os.environ.get("RUNE_ADVISOR_CONFIG", "rune_advisor.toml"))
+    path = path or Path(os.environ.get("RUNE_ADVISOR_CONFIG") or user_file("rune_advisor.toml"))
     s = Settings()
     raw = tomllib.loads(path.read_text()) if path.exists() else {}
     if raw:

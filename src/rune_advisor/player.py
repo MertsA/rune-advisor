@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from . import config
 from .config import ARCHIVE_DIR, Settings
 from .drops import resolve_item_log
 from .http import CachedClient
@@ -22,7 +23,7 @@ from .quests import REPLAYABLE_QUESTS, reconcile_journal_qp
 from .sources import adventurers_log, hiscores, plugin_db, game_configs
 from .xp import SKILL_ALIASES
 
-OVERRIDES_FILE = Path("overrides.toml")
+OVERRIDES_FILE = config.user_file("overrides.toml")
 
 
 def current_quest_titles(client: CachedClient, name: str) -> set[str] | None:

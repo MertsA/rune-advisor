@@ -25,6 +25,7 @@ rune-advisor = "rune_advisor.app:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "markdown-it-py>=3"]  # markdown-it: scripts/build_site_pages.py
+package = ["pyinstaller>=6.10"]  # scripts/build_app.py: the frozen app (AppImage, Windows)
 
 [build-system]
 requires = ["hatchling"]
