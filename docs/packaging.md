@@ -67,6 +67,12 @@ Known limits:
   PyInstaller collects some system libraries. CI builds in an `ubuntu:22.04` container (glibc 2.35; the Qt
   wheels themselves need 2.34), so releases run on Ubuntu 22.04, Fedora 36, Debian 12 and newer. A build
   made on a current Arch is for testing on current systems.
+- **System libraries stay out.** The graphics drivers are the user's own and load into the app, so the
+  libraries they depend on (the C++ runtime, Wayland, X11, DRM, zstd) and fontconfig, FreeType, GLib and
+  D-Bus must be the system's: `HOST_LIBS` in the spec keeps the build machine's copies out. The first CI
+  build bundled Ubuntu 22.04's libstdc++, and on Arch Mesa then failed to load and the browser engine
+  aborted at start (2026-11-16). The headless CI check cannot see this class of fault: a new build needs
+  one start on a real desktop newer than the build base.
 - **X11 libraries.** Qt's X11 plugin loads `libxcb-cursor` and friends; PyInstaller bundles them from the
   build machine and only warns when they are missing (then the app starts on Wayland only). The CI job
   installs them; the sandbox does not have them.

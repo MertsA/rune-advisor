@@ -59,8 +59,24 @@ UNUSED = [
 TRANSLATIONS, KEPT_LOCALE = QT + "translations/", QT + "translations/qtwebengine_locales/en-US.pak"
 
 
+# Libraries that must come from the user's system, never from the build machine. The graphics drivers are
+# the system's own and load into this process; they need the system's C++ runtime, Wayland, X11 and DRM
+# libraries, and an older bundled copy found first makes them fail to load (seen on Arch with a bundle built
+# on Ubuntu 22.04: Mesa wanted a newer libstdc++, no EGL, the browser engine aborted). Fonts are configured
+# by the system's files, which an older bundled fontconfig cannot read. Every desktop has these, and the build
+# machine is older than any supported system, so the system's copy is always new enough for the rest of
+# the bundle.
+HOST_LIBS = re.compile(r"^lib(stdc\+\+|gcc_s|fontconfig|freetype|harfbuzz|expat|z|drm|gbm|glapi|GL|EGL|GLX|GLdispatch|"
+                       r"OpenGL|wayland-[a-z]+|X11|X11-xcb|xcb|xcb-dri[23]|xcb-glx|xcb-present|xcb-sync|xcb-xfixes|"
+                       r"xcb-randr|xcb-shm|xshmfence|Xau|Xdmcp|Xext|zstd|"
+                       r"
+                       r"asound|glib-2\.0|gobject-2\.0|gio-2\.0|gmodule-2\.0|gthread-2\.0|dbus-1|systemd|udev)\.so(\.|$)")
+
+
 def unused(dest: str) -> bool:
     dest = PurePosixPath(dest).as_posix()
+    if "/" not in dest and HOST_LIBS.match(dest):
+        return True
     if dest.startswith(TRANSLATIONS):
         return dest != KEPT_LOCALE
     return any(dest == u or (u.endswith("/") and dest.startswith(u)) for u in UNUSED)

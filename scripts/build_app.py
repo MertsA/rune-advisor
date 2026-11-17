@@ -111,7 +111,14 @@ def freeze(work: Path, info: dict) -> Path:
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--log-level", "WARN",
                     "--distpath", str(dist), "--workpath", str(work / "pyinstaller"), str(SPEC)],
                    check=True, cwd=ROOT, env={**os.environ, "RUNE_ADVISOR_BUILD_FILE": str(build_file)})
-    return dist / ("Rune Advisor.app" if sys.platform == "darwin" else "rune-advisor")
+    bundle = dist / ("Rune Advisor.app" if sys.platform == "darwin" else "rune-advisor")
+    if sys.platform.startswith("linux"):
+        # PyInstaller links Qt's libraries into the bundle's top folder; the ones the spec trimmed leave links
+        # to nothing behind.
+        for link in bundle.rglob("*"):
+            if link.is_symlink() and not link.exists():
+                link.unlink()
+    return bundle
 
 
 def executable(bundle: Path) -> Path:
