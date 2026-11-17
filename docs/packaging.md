@@ -94,9 +94,19 @@ window, no console) and `rune-advisor.exe` (the CLI). The installer is Inno Setu
 `%LOCALAPPDATA%\Programs\Rune Advisor`, with a Start menu entry and an uninstaller; settings and state are
 left alone by an uninstall.
 
-Written without a Windows machine. CI builds it and the frozen CLI passes its start check there (2026-11-16,
-a 31 MB installer); nobody has run the installer or opened the window on Windows yet. Still to do: an icon, version details on the executables (SignPath wants the same product name
-and version on every signed file), showing the privacy policy in the installer, signing.
+Installed and run on Windows 11 on 2026-11-16: the window works. Windows Defender's cloud model then removed
+`Rune Advisor.exe` as `Trojan:Win32/Bearfoos.A!ml`, a machine-learning verdict typical for PyInstaller apps,
+whose stock launcher stub is the same file in every such app. Since then:
+
+- both executables and the installer carry version details (product, version, description) and an icon
+  (`scripts/build_icons.py` regenerates the committed `.ico` / `.icns` from the site's SVG);
+- the Windows CI job compiles PyInstaller's launcher from source, so the stub is not the stock binary
+  (the step fails if the stub's hash did not change).
+
+Whether that is enough is not known yet. Next resorts: report each release to Microsoft as a false positive
+(microsoft.com/wdsi/filesubmission; cleared per file), check releases on VirusTotal, and if detections
+persist, drop the frozen executable for the official embeddable Python (signed by the PSF) running the
+planner as plain files. Still to do: showing the privacy policy in the installer, signing.
 
 ## macOS
 
