@@ -33,10 +33,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-
 from . import config
 
 log = logging.getLogger(__name__)
@@ -233,8 +229,13 @@ def version() -> str:
 
 # ---- signing -----------------------------------------------------------------------------------------------------
 
+# cryptography is imported where it is used: every planner module imports this one for the data loader, and
+# the web planner runs without the library (it never installs or signs a package).
 def generate_keypair() -> tuple[str, str]:
     """(private, public) as base64 of the raw 32-byte keys."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
     key = Ed25519PrivateKey.generate()
     raw_priv = key.private_bytes_raw()
     raw_pub = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
@@ -242,12 +243,17 @@ def generate_keypair() -> tuple[str, str]:
 
 
 def sign(data: bytes, private_b64: str) -> str:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
     key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(private_b64))
     return base64.b64encode(key.sign(data)).decode()
 
 
 def verify(data: bytes, signature_b64: str, keys: list[str] | None = None) -> None:
     """Raise PackageError unless `signature_b64` is a valid signature of `data` by one of the trusted keys."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
     keys = PUBLIC_KEYS if keys is None else keys
     try:
         sig = base64.b64decode(signature_b64.strip(), validate=True)

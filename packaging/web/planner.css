@@ -1,0 +1,7 @@
+/* Additions to the desktop app's style.css for the web planner page. */
+.top h1 a { color: inherit; text-decoration: none; }
+.settings { margin-top: 1rem; }
+.settings label { display: block; margin: .6rem 0 .2rem; }
+.settings textarea { width: 100%; font: 13px/1.4 ui-monospace, Consolas, monospace; background: var(--bg);
+                     color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: .4rem; }
+.settings button { margin-top: .6rem; }

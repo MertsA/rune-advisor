@@ -170,11 +170,6 @@ def load_settings(path: Path | None = None, beta: bool = False) -> Settings:
         if "members" in raw:
             s.members = bool(raw["members"])
         s.group = list(raw.get("group", []))
-        api = raw.get("api", {})
-        s.api_url = api.get("url") or os.environ.get("RUNE_ADVISOR_API_URL")
-        listed = [t for t in [api.get("token"), *api.get("tokens", [])] if isinstance(t, str) and t]
-        env = os.environ.get("RUNE_ADVISOR_API_TOKEN")
-        s.api_tokens = list(dict.fromkeys(listed or ([env] if env else [])))
         data = raw.get("data", {})
         s.data_url = data.get("url")
         s.check_updates = bool(data.get("check_updates", True))
@@ -183,6 +178,12 @@ def load_settings(path: Path | None = None, beta: bool = False) -> Settings:
                 members=bool(p["members"]) if "members" in p else None,
                 snapshot=_path(p["snapshot"], path) if "snapshot" in p else None,
             )
+    # The [api] table, else the environment: read with or without a settings file (the web planner has none).
+    api = raw.get("api", {})
+    s.api_url = api.get("url") or os.environ.get("RUNE_ADVISOR_API_URL")
+    listed = [t for t in [api.get("token"), *api.get("tokens", [])] if isinstance(t, str) and t]
+    env = os.environ.get("RUNE_ADVISOR_API_TOKEN")
+    s.api_tokens = list(dict.fromkeys(listed or ([env] if env else [])))
     s.data_url = os.environ.get("RUNE_ADVISOR_DATA_URL") or s.data_url
     if env_db := os.environ.get("RUNE_ADVISOR_PLUGIN_DB"):
         s.plugin_db = Path(env_db)

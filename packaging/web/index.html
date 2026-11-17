@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Planner - Rune Advisor</title>
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="planner.css">
+<meta name="api-base" content="https://api.runeadvisor.com">
+</head>
+<body>
+<header class="top">
+  <h1><a href="/">Rune Advisor</a></h1>
+  <span id="engine" class="muted" role="status">Starting the planner...</span>
+  <div id="who" class="who" hidden>
+    <span id="who-name"></span>
+    <button id="change-player" type="button" class="link">Change player</button>
+  </div>
+  <button id="sign-out" type="button" class="link">Sign out</button>
+</header>
+<noscript><p class="panel">The planner runs in your browser and needs JavaScript.</p></noscript>
+
+<main>
+  <section id="welcome" class="panel" aria-labelledby="welcome-h">
+    <h2 id="welcome-h">Who are you planning for?</h2>
+    <form id="player-form" class="row">
+      <label for="player-input">Character</label>
+      <input id="player-input" name="player" maxlength="12" autocomplete="off" list="characters" required>
+      <datalist id="characters"></datalist>
+      <button type="submit">Open</button>
+    </form>
+    <p class="hint" id="characters-hint">The planner works on what the Rune Advisor plugin has posted for your characters. It runs in this tab: nothing it works out is sent anywhere.</p>
+    <p id="welcome-error" class="error" role="alert" hidden></p>
+    <details class="settings">
+      <summary>Settings</summary>
+      <p class="hint">The same two files the desktop planner reads. They are kept in this browser only. Saving restarts the planner.</p>
+      <form id="settings-form">
+        <label for="settings-text">rune_advisor.toml (for example <code>ironman = true</code>, <code>group = ["A", "B"]</code>)</label>
+        <textarea id="settings-text" rows="8" spellcheck="false"></textarea>
+        <label for="overrides-text">overrides.toml</label>
+        <textarea id="overrides-text" rows="8" spellcheck="false"></textarea>
+        <button type="submit">Save</button>
+        <span id="settings-status" class="muted" role="status"></span>
+      </form>
+    </details>
+  </section>
+
+  <div id="workspace" hidden>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="true" data-view="profile">Profile</button>
+      <button role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" tabindex="-1" data-view="guide">Guide</button>
+      <button role="tab" id="tab-next" aria-controls="panel-next" aria-selected="false" tabindex="-1" data-view="next">Next session</button>
+      <button role="tab" id="tab-focus" aria-controls="panel-focus" aria-selected="false" tabindex="-1" data-view="focus">Focus</button>
+    </div>
+
+    <section id="panel-profile" class="panel" role="tabpanel" aria-labelledby="tab-profile" data-view="profile">
+      <form class="controls row" data-view="profile"><button type="submit">Reload</button></form>
+      <div class="status" data-status></div>
+      <div class="out" data-out></div>
+    </section>
+
+    <section id="panel-guide" class="panel" role="tabpanel" aria-labelledby="tab-guide" data-view="guide" hidden>
+      <form class="controls row" data-view="guide">
+        <label>Mood <select name="mood"><option value="">any</option></select></label>
+        <label>Session (hours) <input name="session" type="number" min="0.25" step="0.25" class="num" placeholder="any"></label>
+        <label>Entries per track <input name="top" type="number" min="1" max="100" value="10" class="num"></label>
+        <details class="tracks"><summary>Tracks</summary><div data-tracks class="checks"></div></details>
+        <button type="submit">Plan guide</button>
+      </form>
+      <div class="status" data-status></div>
+      <div class="out" data-out></div>
+    </section>
+
+    <section id="panel-next" class="panel" role="tabpanel" aria-labelledby="tab-next" data-view="next" hidden>
+      <form class="controls row" data-view="next">
+        <label>Hours <input name="hours" type="number" min="0.25" step="0.25" value="2" class="num"></label>
+        <label>Mood <select name="mood"><option value="">any</option></select></label>
+        <label class="check"><input name="replan" type="checkbox"> Re-plan after each pick (slow)</label>
+        <button type="submit">Pack a session</button>
+      </form>
+      <div class="status" data-status></div>
+      <div class="out" data-out></div>
+    </section>
+
+    <section id="panel-focus" class="panel" role="tabpanel" aria-labelledby="tab-focus" data-view="focus" hidden>
+      <form class="controls row" data-view="focus">
+        <label>Goal <input name="goal" class="wide" placeholder='Thieving outfit, Thieving:99, item:Dragon pickaxe' required></label>
+        <button type="submit">Focus</button>
+      </form>
+      <div class="status" data-status></div>
+      <div class="out" data-out></div>
+    </section>
+  </div>
+</main>
+<footer class="credit">
+  <p>Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan Content Policy. This content is not endorsed by or affiliated with Jagex.</p>
+</footer>
+<script src="planner.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

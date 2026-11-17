@@ -3,6 +3,9 @@
 // Rules this file keeps:
 // - The key lives in one variable (`key`) for as long as the page is open. It is never written to
 //   localStorage, sessionStorage, a cookie, the address bar or the console.
+// - "Open the web planner" (shown only where the page names a planner, <meta name="planner">) makes a read
+//   token with the key and leaves that token, never the key, in sessionStorage for the planner page: it is
+//   gone when the tab closes, so the next visit needs the key again.
 // - Keys and tokens travel only in the Authorization header, to the one API host named in the page's
 //   <meta name="api-base">. Nothing else is contacted.
 // - Text from the API is put on the page with textContent, never as HTML.
@@ -266,6 +269,8 @@
       $("key").value = "";
       status("signin-status", "");
       show("account", true);
+      // Sent here by the planner page (/account/#planner): go straight back to it with a token.
+      if (PLANNER && location.hash === "#planner") openPlanner();
       return true;
     }
     show("account", false);
@@ -347,6 +352,41 @@
     status("token-status", scope === "submit" ? "Made. Paste it into the plugin's settings." : "Made. Give it to the planner.", "ok");
     await loadAccount();
   });
+
+  // --- the web planner ------------------------------------------------------------------------------------
+
+  // The planner page (same site) reads characters with a read token of its own. It gets one here, so using
+  // it takes the account key: the key opens the account, this makes a fresh read token labelled
+  // PLANNER_LABEL, revokes the ones made the same way before (one planner tab per account), and hands the
+  // token to the planner through sessionStorage, which lasts as long as this tab.
+  const PLANNER = (document.querySelector('meta[name="planner"]') || {}).content || "";
+  const PLANNER_LABEL = "Web planner";
+  const PLANNER_TOKEN = "ra-planner-token"; // the sessionStorage name packaging/web/planner.js reads
+
+  async function openPlanner() {
+    status("planner-status", "Making a token for the planner...");
+    const tokens = await api("GET", "/v1/tokens");
+    if (tokens.status !== 200) return status("planner-status", "Could not list tokens: " + reason(tokens), "error");
+    for (const t of tokens.body.tokens) {
+      if (t.label === PLANNER_LABEL && t.scopes.length === 1 && t.scopes[0] === "read") {
+        await api("DELETE", "/v1/tokens", undefined, true, null, t.id);
+      }
+    }
+    const made = await api("POST", "/v1/tokens", { label: PLANNER_LABEL, scopes: ["read"] });
+    if (made.status !== 201) return status("planner-status", "Could not make a token: " + reason(made), "error");
+    try {
+      sessionStorage.setItem(PLANNER_TOKEN, made.body.token);
+    } catch (e) {
+      return status("planner-status", "This browser refuses session storage, which the planner needs.", "error");
+    }
+    key = null;
+    location.assign(PLANNER);
+  }
+
+  if (PLANNER) {
+    show("planner-panel", true);
+    $("planner-button").addEventListener("click", openPlanner);
+  }
 
   // With the account key: delete the characters one token posted for, and revoke that token.
   async function deletePosted(id, name, posted) {

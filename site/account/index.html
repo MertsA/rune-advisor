@@ -75,6 +75,15 @@ memory only: it is not saved in the browser, not put in the address bar, and sen
 </section>
 
 <div id="account" hidden>
+  <!-- Shown only where the page names a planner (<meta name="planner" content="/planner/">). -->
+  <section class="panel" id="planner-panel" hidden>
+    <h2>Web planner</h2>
+    <p>The planner runs in this browser tab on the characters stored under this account. Opening it makes a
+    read token for this tab; closing the tab forgets it, so the next visit starts here with the account key.</p>
+    <button type="button" class="primary" id="planner-button">Open the web planner</button>
+    <p class="status" id="planner-status" role="status"></p>
+  </section>
+
   <section class="panel">
     <h2>Account</h2>
     <dl class="facts" id="facts"></dl>

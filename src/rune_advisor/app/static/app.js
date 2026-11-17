@@ -19,7 +19,9 @@ function h(tag, attrs, ...children) {
   return el;
 }
 
+// The web planner (packaging/web/planner.js) answers these calls in the page instead of a local server.
 async function api(method, path, body) {
+  if (window.raTransport) return window.raTransport(method, path, body);
   const res = await fetch(path, {
     method, credentials: "same-origin",
     headers: body === undefined ? {} : { "Content-Type": "application/json" },

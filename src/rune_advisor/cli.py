@@ -60,6 +60,13 @@ def _ctx(player_name: str, use_plugin: bool, beta: bool = False, plugin_only: bo
         player.ironman = settings.ironman or settings.in_group(player_name)
     else:
         player = load_player(client, player_name, settings, use_plugin=use_plugin)
+    return context_for(player, settings, client, members)
+
+
+def context_for(player, settings, client: CachedClient, members: bool | None = None, quest_info=None) -> Context:
+    """The planning Context for a loaded player: group mates, membership, cost model and the wiki's tables.
+    `quest_info` replaces the per-quest wiki lookup (the web planner answers it from one prefetched table)."""
+    player_name = player.name
     if settings.in_group(player_name):
         load_group(player, settings)
         mates = ", ".join(m for m in settings.group if m.lower() != player_name.lower())
@@ -92,7 +99,7 @@ def _ctx(player_name: str, use_plugin: bool, beta: bool = False, plugin_only: bo
     return Context(
         player=player,
         cost=cost,
-        quest_info=cache(lambda t: wiki.fetch_quest(client, t)),
+        quest_info=quest_info or cache(lambda t: wiki.fetch_quest(client, t)),
         resources=load_pool(player, settings.resources),
         achievement_reqs=wiki.fetch_achievement_requirements(client, ironman=player.ironman),
         farming=settings.farming,

@@ -253,3 +253,101 @@ def test_planner_reuses_context_per_player_and_options(ctx):
     planner.forget()
     planner.compute("profile", p1, lambda *a: None)
     assert len(built) == 3
+
+
+# ---- the web planner (rune_advisor.app.web, packaging/web) ----
+
+def test_web_run_answers_in_json(ctx, monkeypatch):
+    from rune_advisor.app import web
+
+    def factory(name, flags, group):
+        if name == "Boom":
+            raise RuntimeError("no plugin export for Boom")
+        return ctx
+
+    monkeypatch.setattr(web, "_planner", Planner(factory))
+    seen = []
+    ok = json.loads(web.run("profile", json.dumps({"player": "PlayerOne"}), False, lambda *a: seen.append(a)))
+    assert ok["result"]["name"] == ctx.player.name and seen and seen[-1][2] == "building profile"
+    assert json.loads(web.run("profile", json.dumps({"player": "Boom"}), False, lambda *a: None)) == {
+        "error": "no plugin export for Boom"}
+    assert "player must be" in json.loads(web.run("profile", json.dumps({"player": "!"}), False, lambda *a: None))["error"]
+    assert set(json.loads(web.meta())) == {"tracks", "moods"}
+
+
+def test_web_player_comes_from_the_export_api_alone(tmp_path, monkeypatch):
+    """The web planner's player: the API's snapshot (state by config id, expanded with the configs the API
+    serves for it), no hiscores or Adventurer's Log, the page's token winning over a settings file's."""
+    from rune_advisor import api_client
+    from rune_advisor.app import web
+    from test_core import _ApiHarness
+
+    h = _ApiHarness(tmp_path)
+    try:
+        key = h.call("POST", "/v1/accounts", {})[1]["key"]
+        plugin = h.call("POST", "/v1/tokens", {"scopes": ["submit"]}, auth=key)[1]["token"]
+        read = h.call("POST", "/v1/tokens", {"label": "Web planner", "scopes": ["read"]}, auth=key)[1]["token"]
+        assert h.call("POST", "/v1/state", h.posts[0], auth=plugin)[0] == 200
+        settings_file = tmp_path / "rune_advisor.toml"
+        settings_file.write_text('ironman = true\n[api]\nurl = "https://elsewhere.invalid"\ntoken = "desktop"\n')
+        monkeypatch.setenv("RUNE_ADVISOR_CONFIG", str(settings_file))
+        monkeypatch.setenv("RUNE_ADVISOR_API_URL", f"http://127.0.0.1:{h.port}/export_api")
+        monkeypatch.setenv("RUNE_ADVISOR_API_TOKEN", read)
+        monkeypatch.setattr(api_client, "CACHE_DIR", tmp_path / "api_cache")
+        monkeypatch.setattr(api_client, "CONFIGS_DIR", tmp_path / "api_configs")
+        monkeypatch.setattr(web, "QUEST_TITLES", tmp_path / "quest_titles.json")
+        settings = web._settings([], "PlayerOne")
+        assert settings.api_tokens == [read] and settings.plugin_db != tmp_path
+        settings.plugin_db = tmp_path / "none.db"
+        p = web.web_player("PlayerOne", settings)
+        assert p.ironman and p.quests and all(q.source == "plugin" for q in p.quests.values())
+        assert any("no quest catalogue" in n for n in p.notes)
+        with pytest.raises(RuntimeError, match="no plugin export for Nobody"):
+            web.web_player("Nobody", settings)
+    finally:
+        h.close()
+
+
+def test_api_settings_come_from_the_environment_without_a_file(tmp_path, monkeypatch):
+    from rune_advisor.config import load_settings
+
+    monkeypatch.setenv("RUNE_ADVISOR_API_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("RUNE_ADVISOR_API_TOKEN", "t")
+    s = load_settings(tmp_path / "absent.toml")
+    assert s.api_url == "http://127.0.0.1:1" and s.api_tokens == ["t"]
+
+
+def test_cached_client_can_keep_stale_answers(tmp_path, monkeypatch):
+    import os
+
+    from rune_advisor.http import CachedClient
+
+    c = CachedClient(tmp_path)
+    c._client = None  # any request would fail: the answers below come from the cache
+    import hashlib
+    key = hashlib.sha256(json.dumps(["https://x.invalid/a", None], sort_keys=True).encode()).hexdigest()
+    path = c.cache_dir / f"{key}.json"
+    path.write_text('{"a": 1}')
+    os.utime(path, (1, 1))
+    with pytest.raises(AttributeError):
+        c.get_json("https://x.invalid/a", ttl=60)
+    monkeypatch.setattr(CachedClient, "keep_stale", True)
+    assert c.get_json("https://x.invalid/a", ttl=60) == {"a": 1}
+
+
+def test_web_frontend_keeps_the_sites_rules():
+    """No markup from strings, nothing loaded from another host, and the key never named: the page holds a
+    read token in sessionStorage only."""
+    from pathlib import Path
+
+    web_dir = Path(__file__).parent.parent / "packaging" / "web"
+    for f in web_dir.iterdir():
+        text = f.read_text()
+        assert "innerHTML" not in text and "outerHTML" not in text and "document.write" not in text, f.name
+        urls = [u for u in __import__("re").findall(r"https?://[^\s\"'<>)]+", text)]
+        assert all(u.startswith("https://api.runeadvisor.com") for u in urls), (f.name, urls)
+    page = (web_dir / "planner.js").read_text()
+    assert 'sessionStorage.getItem(TOKEN)' in page and "raa_" not in page
+    account = (web_dir.parent.parent / "site" / "assets" / "account.js").read_text()
+    assert 'sessionStorage.setItem(PLANNER_TOKEN, made.body.token)' in account
+    assert account.count("sessionStorage.setItem") == 1 and "localStorage.setItem" not in account

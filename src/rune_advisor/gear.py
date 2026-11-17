@@ -59,6 +59,7 @@ def _item(name: str) -> Item | None:
     return Item(name, slot or "", cls, tier, damage, accuracy, bonus, armour, reqs)
 
 
+@cache
 def _base(name: str) -> str:
     return re.sub(r"\s*\(.*?\)", "", name).strip().lower()
 

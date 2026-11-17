@@ -85,10 +85,12 @@ def has(player: PlayerState, *names: str) -> str | None:
 def outfit_bonus(player: PlayerState, skill: str) -> tuple[float, str | None]:
     """(xp share, description) from the skill's xp outfit pieces owned (elite outfits inherit it)."""
     best = (0.0, None)
+    held = None  # read once: each `player.holdings` is a fresh copy
     for o in data().get("outfits", []):
         if o["skill"] != skill and not (o["skill"] == "Runecrafting" and skill == "Runecraft"):
             continue
-        owned = sum(1 for p in o["pieces"] if p in player.holdings)
+        held = player.holdings if held is None else held
+        owned = sum(1 for p in o["pieces"] if p in held)
         if not owned:
             continue
         n = len(o["pieces"])

@@ -14,6 +14,10 @@ from .config import CACHE_DIR, USER_AGENT
 
 
 class CachedClient:
+    # True in the web planner: a cached answer is used whatever its age. Its cache is filled when the site is
+    # built (the wiki's tables), and a browser page cannot fetch them itself.
+    keep_stale = False
+
     def __init__(self, cache_dir: Path = CACHE_DIR, ttl_seconds: float = 15 * 60):
         self.cache_dir = cache_dir / "http"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -24,7 +28,7 @@ class CachedClient:
         ttl = self.ttl if ttl is None else ttl
         key = hashlib.sha256(json.dumps([url, params], sort_keys=True).encode()).hexdigest()
         path = self.cache_dir / f"{key}.json"
-        if path.exists() and time.time() - path.stat().st_mtime < ttl:
+        if path.exists() and (self.keep_stale or time.time() - path.stat().st_mtime < ttl):
             return json.loads(path.read_text())
         resp = self._client.get(url, params=params)
         resp.raise_for_status()

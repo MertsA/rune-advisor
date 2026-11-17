@@ -175,7 +175,8 @@ def player_from_snapshot(name: str, snap: dict[str, Any], current_quests: set[st
     """
     p = PlayerState(name=name, fetched_at=datetime.now())
     by_name: dict[str, list[dict]] = {}
-    for q in snap.get("quests") or []:
+    # Quest names are in the expanded form only (an export API snapshot holds state by config id).
+    for q in expanded(snap)[0].get("quests") or []:
         by_name.setdefault(q["name"], []).append(q)
     if current_quests is None:
         p.notes.append("no quest catalogue: retired quest configs may show as unfinished")
@@ -367,28 +368,33 @@ def var_containers(variables: dict) -> dict[str, dict[str, int]]:
     return out
 
 
+def expanded(snap: dict[str, Any], configs: "game_configs.GameConfigs | None" = None
+             ) -> tuple[dict[str, Any], "game_configs.GameConfigs | None", list[str]]:
+    """(snapshot in the shape the planner reads, the configs used, notes). A schema-2 snapshot holds state by
+    config id and is joined with the game configs for names and tests; an older one is returned as it is."""
+    configs = configs or game_configs.load()
+    if (snap.get("schema") or 1) < 2:
+        return snap, configs, []
+    if configs is None:
+        return ({**snap, "quests": [], "achievements": []}, None,
+                ["snapshot (schema 2) needs the game configs data: run scripts/import_game_configs.py; "
+                 "quests and achievements skipped"])
+    fp = snap.get("configs")  # the set the client exported with: newer than the package after a game update
+    if isinstance(fp, int) and configs.fingerprint != fp:
+        from . import api_client
+
+        configs = api_client.cached_configs(fp) or configs
+    snap, notes = game_configs.expand_snapshot(snap, configs)
+    return snap, configs, notes
+
+
 def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_skills: bool = False,
                           configs: "game_configs.GameConfigs | None" = None) -> None:
     exported = snap.get("exportedAt")
     p.notes.append(f"Plugin snapshot applied (exportedAt={exported})")
     p.notes.extend(str(n) for n in (snap.get("notes") or []))  # the server's (unknown item ids) and stale fills
-    if (snap.get("schema") or 1) >= 2:
-        # State by config id: join with the game configs (dumped by the dev plugin) for names and tests.
-        configs = configs or game_configs.load()
-        if configs is None:
-            p.notes.append("snapshot (schema 2) needs the game configs data: run scripts/import_game_configs.py; "
-                           "quests and achievements skipped")
-            snap = {**snap, "quests": [], "achievements": []}
-        else:
-            fp = snap.get("configs")  # the set the client exported with: newer than the package after a game update
-            if isinstance(fp, int) and configs.fingerprint != fp:
-                from . import api_client
-
-                configs = api_client.cached_configs(fp) or configs
-            snap, notes = game_configs.expand_snapshot(snap, configs)
-            p.notes.extend(notes)
-    else:
-        configs = configs or game_configs.load()
+    snap, configs, notes = expanded(snap, configs)
+    p.notes.extend(notes)
     for enum_name, s in (snap.get("skills") or {}).items():
         name = plugin_db.SKILLTYPE_TO_NAME.get(enum_name, enum_name)
         old = p.skills.get(name)
@@ -405,7 +411,8 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
     # The game keeps retired pre-rework quest configs under the same names (e.g. two "Rune
     # Mysteries"), so merge by name: done if any copy is done.
     by_name: dict[str, list[dict]] = {}
-    for q in snap.get("quests") or []:
+    # Quest names are in the expanded form only (an export API snapshot holds state by config id).
+    for q in expanded(snap)[0].get("quests") or []:
         by_name.setdefault(q["name"], []).append(q)
     # Quests never un-complete (replays show as unfinished in the Adventurer's Log too), so a quest another
     # source has as completed but the snapshot doesn't was finished after the snapshot was taken.

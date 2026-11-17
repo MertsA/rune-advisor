@@ -285,8 +285,23 @@ def owned(player: PlayerState, item: str) -> bool:
     Diango since), or ticked off in an achievement's item list (boss logs)."""
     if item in player.holdings or player.item_log.get(item, 0) > 0:
         return True
-    return any(r.get("description") == item and r.get("complete")
-               for a in player.achievements.values() for r in a.requirements)
+    return any(r.get("complete") for r in _requirements_by_description(player).get(item, ()))
+
+
+def _requirements_by_description(player: PlayerState) -> dict[str, list[dict]]:
+    """Every achievement requirement test under its description. Planning asks `owned` tens of thousands of
+    times, and walking all achievements each time was a fifth of a guide's run. The index holds the tests
+    themselves, so a flag set later is seen; it is rebuilt when the player's achievements are another dict
+    (kept alongside, so the comparison is by identity) or change in number."""
+    cached = player.__dict__.get("_requirements_by_description")
+    if cached is None or cached[0] is not player.achievements or cached[1] != len(player.achievements):
+        index: dict[str, list[dict]] = {}
+        for a in player.achievements.values():
+            for r in a.requirements:
+                if isinstance(d := r.get("description"), str):
+                    index.setdefault(d, []).append(r)
+        cached = player.__dict__["_requirements_by_description"] = (player.achievements, len(player.achievements), index)
+    return cached[2]
 
 
 def notable_drops(row: dict, skill: str, xp_per_hour: float, player: PlayerState,
