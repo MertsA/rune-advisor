@@ -104,6 +104,7 @@ def context_for(player, settings, client: CachedClient, members: bool | None = N
         achievement_reqs=wiki.fetch_achievement_requirements(client, ironman=player.ironman),
         farming=settings.farming,
         skill_weights=settings.skill_weights,
+        bonus_xp_skill=settings.bonus_xp_skill,
         achievement_descriptions={r["name"]: json.loads(r["json"] or "{}").get("description") or ""
                                   for r in achievement_rows},
         members_only_achievements=set() if player.members else wiki.members_only_achievements(client),

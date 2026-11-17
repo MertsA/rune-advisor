@@ -149,6 +149,8 @@ class Context:
     # Usefulness weights per skill from rune_advisor.toml ([skill_weights]; 1.0 when unset): the free_xp track
     # multiplies the hours a lamp saves in a skill by them when choosing where it goes.
     skill_weights: dict[str, float] = field(default_factory=dict)
+    # rune_advisor.toml's bonus_xp_skill: the skill bonus xp that must be placed now goes to (free_xp).
+    bonus_xp_skill: str | None = None
     # Hours per xp that other goals' own plans take (set by joint plans/roadmaps): a method's side xp
     # in these skills counts against its cost at that rate (side_value_per_xp).
     wanted: dict[str, float] = field(default_factory=dict)

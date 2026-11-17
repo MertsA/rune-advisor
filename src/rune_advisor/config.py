@@ -86,6 +86,9 @@ class Settings:
     # [skill_weights] Construction = 0.3: how much a skill's xp is worth to the free_xp track relative to others
     # (the user's call on usefulness: Construction unlocks furniture, Herblore potions every plan drinks).
     skill_weights: dict[str, float] = field(default_factory=dict)
+    # bonus_xp_skill = "Herblore": where bonus xp that has to be placed now goes (black pearls, rested xp at its
+    # cap). Unset: the skill where it saves the most planned training.
+    bonus_xp_skill: str | None = None
     coins_per_hour: float | None = None
     # Hours a missing collection-log unique is worth to the player (netted off a boss log's cost). 0 (the
     # default, the user's call): uniques are listed, not valued.
@@ -160,6 +163,7 @@ def load_settings(path: Path | None = None, beta: bool = False) -> Settings:
         s.xp_rates = raw.get("xp_rates", {})
         s.track_weights = raw.get("track_weights", {})
         s.skill_weights = {k: float(v) for k, v in raw.get("skill_weights", {}).items()}
+        s.bonus_xp_skill = raw.get("bonus_xp_skill") or None
         s.coins_per_hour = raw.get("coins_per_hour")
         s.unique_value_hours = float(raw.get("unique_value_hours", 0.0))
         s.prefer_exquisite_urns = bool(raw.get("prefer_exquisite_urns", False))

@@ -22,12 +22,13 @@ def without_choice(pool):
     """The pool without choice resources (lamps and points that can go on any skill): the free_xp track decides
     where those go, so other tracks' level plans must not spend them too (2026-11-11: with 184 penguin points in
     the pool, 92 Defence, 92 Hitpoints and 104 Thieving all read 0.0h beside "spend the points on Invention").
-    Skill-bound resources (a Smithing-only lamp, banked bonus xp) stay."""
+    Skill-bound resources (a Smithing-only lamp, banked bonus xp) stay; bonus xp free_xp places up front (black
+    pearls, rested xp at its cap: Resource.spend_first) goes with the choice resources."""
     from ..resources import ResourcePool
 
     if pool is None:
         return None
-    return ResourcePool([r for r in pool.resources if r.skills is not None or r.bonus])
+    return ResourcePool([r for r in pool.resources if r.skills is not None or (r.bonus and not r.spend_first)])
 
 
 def candidates_for_picking(ctx, tracks: dict, names=None) -> dict:

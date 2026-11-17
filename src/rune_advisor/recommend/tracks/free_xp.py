@@ -19,6 +19,11 @@ never Hitpoints, which comes on its own with every other combat skill and unlock
 Level plans spend the same pool when it beats grinding, so a session that takes this cash-in and a level goal in
 the same skill counts the lamps twice; the picker's totals are a little optimistic then.
 
+Bonus xp that should not wait for a grind (Resource.spend_first) is placed here too: black pearls cannot be
+banked, and Fort Forinthry's rested xp stops accruing at the Town Hall's cap (listed from 500, the lowest cap,
+since the tier isn't exported). It goes to `bonus_xp_skill` (rune_advisor.toml) when set, else where it saves the
+most planned training; level plans in the picker's other tracks leave it alone (picker.without_choice).
+
 Invention discoveries (invention.py): every blueprint the player hasn't discovered and could, boosted by the best
 Invention potion in the bank, is a one-off xp at an inventor's workbench; the entry is worth the Invention training
 it replaces. Discovery materials (a few parts per blueprint) aren't costed.
@@ -30,8 +35,8 @@ import math
 
 from ...invention import GATE_TEXT, discoveries
 from ...player import held_rocks
-from ...resources import load_pool
-from ...xp import level_at_xp, level_cap, xp_at
+from ...resources import RESTED_CAPS, load_pool
+from ...xp import SKILL_ALIASES, level_at_xp, level_cap, xp_at
 from ..base import Candidate, Context
 from ..plans import goal_levels, xp_hours_saved
 
@@ -76,9 +81,65 @@ class _FreeXp:
             if r.units > 0 and r.skills is None and not r.bonus and not r.all_at_once and r.xp_per_unit(99) > 0:
                 if c := self._choice(ctx, r, goals):
                     out.append(c)
+            elif r.units > 0 and r.bonus and r.spend_first and p.members:
+                if c := self._bonus(ctx, r, goals):
+                    out.append(c)
         if c := self._discoveries(ctx, goals):
             out.append(c)
         return out
+
+    def _bonus(self, ctx: Context, r, goals: dict[str, int]) -> Candidate | None:
+        """Bonus xp that should be placed now (Resource.spend_first): black pearls, which cannot be banked, and
+        rested xp once it may be at the Town Hall's cap. It goes to rune_advisor.toml's `bonus_xp_skill` when
+        set, else to the skill where it saves the most planned training. Bonus xp pays 1:1 on trained xp, so
+        in a skill it is worth the training of as much xp as fits in half of what is left to the skill's goal
+        level after the bonus xp already banked there."""
+        p = ctx.player
+        weights = getattr(ctx, "skill_weights", None) or {}
+
+        def placed(skill: str) -> tuple[float, float, float]:
+            """(hours saved, bonus xp gained, the part of it the goal can use)."""
+            level = p.skills[skill].level
+            gained = r.units * r.xp_per_unit(level)
+            left = xp_at(skill, goals[skill]) - p.xp(skill) if skill in goals else 0.0
+            usable = max(0.0, min(gained, left / 2 - p.bonus_xp.get(skill, 0)))
+            return training_hours(ctx, skill, usable, goals), gained, usable
+
+        options = [s for s in p.skills if s not in PASSIVE_SKILLS]
+        wanted = SKILL_ALIASES.get(ctx.bonus_xp_skill or "", ctx.bonus_xp_skill)
+        if wanted in options:
+            ranked, how = [wanted], f"{wanted} is bonus_xp_skill in rune_advisor.toml"
+        else:
+            scored = {s: placed(s) for s in options}
+            ranked = sorted((s for s in options if scored[s][0] > 0),
+                            key=lambda s: scored[s][0] * weights.get(s, 1.0), reverse=True)[:3]
+            how = "set bonus_xp_skill in rune_advisor.toml to always use one skill"
+            if not ranked:  # nothing left to unlock anywhere: it still has to go somewhere
+                ranked = [max(options, key=lambda s: p.xp(s))] if options else []
+        if not ranked:
+            return None
+        results = {s: placed(s) for s in ranked}
+        hours, gained, usable = results[ranked[0]]
+        lines = [f"{s} {results[s][1]:,.0f} bonus xp ({results[s][0] * 60:.0f} min of training saved"
+                 + (f"; only {results[s][2]:,.0f} fits before {goals.get(s, 'its last unlock')}" if results[s][2] < results[s][1] else "")
+                 + ")" for s in ranked]
+        if r.all_at_once:  # rested xp
+            caps = "/".join(f"{c:,}" for c in RESTED_CAPS)
+            title = f"Cash in {r.units:,} rested xp with Aster on {ranked[0]}"
+            reason = (f"rested xp stops accruing at the Town Hall's cap ({caps} by tier; the tier isn't exported), "
+                      "and it is all traded into one skill at once")
+            needs = [r.source]
+        else:
+            title = f"Crack {r.units} x {r.name} on {ranked[0]}"
+            reason = f"{r.name} can't be banked: a backpack slot until cracked"
+            needs = [f"{r.name} in the backpack"]
+        return Candidate(
+            track=self.name, title=title, value=round(hours * weights.get(ranked[0], 1.0), 2), unit="h saved",
+            cost_hours=round(max(r.units * r.hours_per_unit, 0.001), 3),
+            details=[reason, "best skills: " + "; ".join(lines), how],
+            why=f"{gained:,.0f} {ranked[0]} bonus xp, ~{hours:.1f}h of training saved; {reason}", needs=needs,
+            skills={ranked[0]},
+        )
 
     def _discoveries(self, ctx: Context, goals: dict[str, int] | None = None) -> Candidate | None:
         p = ctx.player

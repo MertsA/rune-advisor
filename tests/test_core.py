@@ -4772,3 +4772,52 @@ def test_reward_books_and_black_pearls_are_xp_in_hand():
     assert pearl.bonus and pearl.units == 2 and pearl.xp_per_unit(90) == star_xp(90, "medium")
     assert not troll.bonus and troll.skills is None and troll.xp_per_unit(99) == troll_book_xp(99) == 77_624
     assert rush.xp_per_unit(99) == rush_book_xp(99) == 7_500 and rush.xp_per_unit(50) < 7_500 and not rush.verified
+
+
+def test_free_xp_places_unbankable_and_capped_bonus_xp(monkeypatch):
+    """Black pearls (not bankable) and rested xp from the lowest Town Hall cap up are placed by free_xp: on the
+    skill where they save the most planned training, or on `bonus_xp_skill`; other tracks' plans leave them."""
+    from rune_advisor.models import Skill
+    from rune_advisor.recommend import picker
+    from rune_advisor.recommend.tracks import free_xp
+    from rune_advisor.resources import load_pool
+    from rune_advisor.xp import star_xp
+
+    p = PlayerState(name="X", inventories={"INV": {"Black pearl": 2}}, rested_xp=400,
+                    skills={"Mining": Skill(name="Mining", level=90, xp=xp_for_level(90)),
+                            "Agility": Skill(name="Agility", level=80, xp=xp_for_level(80)),
+                            "Hitpoints": Skill(name="Hitpoints", level=90, xp=xp_for_level(90))})
+    rates = {"Mining": 100_000.0, "Agility": 20_000.0, "Hitpoints": 10_000.0}
+    monkeypatch.setattr(free_xp, "goal_levels", lambda ctx: {"Mining": 99, "Agility": 99, "Hitpoints": 99})
+
+    class Ctx:
+        player, resources, skill_weights, bonus_xp_skill = p, None, {}, None
+
+        def level_plan(self, skill, level):
+            return type("LP", (), {"hours": (xp_for_level(level) - p.skills[skill].xp) / rates[skill]})()
+
+    ctx = Ctx()
+    (pearls,) = free_xp.FreeXpTrack.candidates(ctx)  # 400 rested xp is under every cap: left to level plans
+    gained = 2 * star_xp(80, "medium")
+    assert pearls.title == "Crack 2 x Black pearl on Agility" and pearls.skills == {"Agility"}  # the slow skill
+    assert pearls.value == round(gained / rates["Agility"], 2) and "can't be banked" in pearls.why
+
+    ctx.bonus_xp_skill = "Mining"
+    assert free_xp.FreeXpTrack.candidates(ctx)[0].title == "Crack 2 x Black pearl on Mining"
+    ctx.bonus_xp_skill = None
+
+    # Bonus xp already banked in a skill uses up its room: only half of what is left to the goal can be bonus.
+    left = xp_for_level(99) - xp_for_level(80)
+    p.bonus_xp = {"Agility": left / 2 - 1000}
+    assert free_xp.FreeXpTrack.candidates(ctx)[0].title == "Crack 2 x Black pearl on Mining"
+    p.bonus_xp = {}
+
+    p.rested_xp = 1_000
+    titles = [c.title for c in free_xp.FreeXpTrack.candidates(ctx)]
+    assert "Cash in 1,000 rested xp with Aster on Agility" in titles and len(titles) == 2
+    kept = {r.name for r in picker.without_choice(load_pool(p)).resources if r.units}
+    assert "Black pearl" not in kept and "rested xp" not in kept
+    p.rested_xp = 400
+    assert "rested xp" in {r.name for r in picker.without_choice(load_pool(p)).resources if r.units}
+    p.members = False  # bonus xp can't be used on free-to-play
+    assert free_xp.FreeXpTrack.candidates(ctx) == []

@@ -61,6 +61,10 @@ class Resource:
     # The skill must be at least this level to take the xp (task-set antique lamps: 85 for an elite set).
     min_level: int = 1
     verified: bool = False  # False until the xp formula has been checked against the wiki
+    # Bonus xp that should be placed now, not kept for a later grind: the free_xp track picks its skill and level
+    # plans leave it alone. Black pearls cannot be banked (a backpack slot until cracked); rested xp stops
+    # accruing at the Town Hall's cap.
+    spend_first: bool = False
     # xp per unit at a level, for rewards with a curve of their own (reward books); beats xp_fixed/xp_per_level.
     xp_fn: Callable[[int], float] | None = None
 
@@ -124,6 +128,7 @@ def load_pool(player: PlayerState, extra: list[dict[str, Any]] | None = None) ->
     if player.rested_xp:
         pool.append(Resource(name="rested xp", source="Aster (Fort Forinthry Town Hall)", star="small",
                              scale=0.01, units=player.rested_xp, all_at_once=True, cadence="regen",
+                             spend_first=player.rested_xp >= RESTED_CAPS[0],
                              hours_per_unit=0.1 / player.rested_xp, verified=True))
     return ResourcePool(pool)
 
@@ -170,6 +175,10 @@ _STAR_NAMES = [
 # ("experience equal to that of a medium fallen star", the wiki's Black pearl page; any skill). The quest's
 # own pearls, "Black pearl (A Shadow over Ashdale)", pay differently and are not counted.
 STAR_LIKE = {"Black pearl": "medium"}
+UNBANKABLE = {"Black pearl"}  # the wiki's infobox: bankable = No
+# Rested xp held stops growing at the Town Hall's cap (tier 1: 500, tier 2: 1,000, tier 3: 1,500; the wiki's Town
+# Hall tiers). The tier is not exported, so from the lowest cap up the balance may be full.
+RESTED_CAPS = (500, 1_000, 1_500)
 
 
 def star_resources(holdings: dict[str, int]) -> list[Resource]:
@@ -177,7 +186,8 @@ def star_resources(holdings: dict[str, int]) -> list[Resource]:
     found = []
     for name, count in holdings.items():
         if name in STAR_LIKE:
-            found.append(Resource(name=name, star=STAR_LIKE[name], units=count, verified=True))
+            found.append(Resource(name=name, star=STAR_LIKE[name], units=count, verified=True,
+                                  spend_first=name in UNBANKABLE, hours_per_unit=LAMP_RUB_HOURS))
             continue
         for pattern in _STAR_NAMES:
             if m := pattern.match(name):
