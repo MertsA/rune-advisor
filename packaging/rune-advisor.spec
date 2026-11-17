@@ -118,18 +118,45 @@ if linux:
     a.datas = [d for d in a.datas if not unused(d[0])]
 
 pyz = PYZ(a.pure)
+
+
+def version_info(description: str, filename: str):
+    """The details Windows shows for an executable (Properties > Details). The same product name and version
+    on both executables; a program without them looks anonymous to people and to malware heuristics alike."""
+    from PyInstaller.utils.win32.versioninfo import (FixedFileInfo, StringFileInfo, StringStruct, StringTable,
+                                                     VarFileInfo, VarStruct, VSVersionInfo)
+
+    numbers = tuple(int(n) for n in re.findall(r"\d+", VERSION)[:4])
+    numbers += (0,) * (4 - len(numbers))
+    strings = {"CompanyName": "Rune Advisor", "ProductName": "Rune Advisor", "ProductVersion": VERSION,
+               "FileDescription": description, "FileVersion": VERSION, "InternalName": filename.removesuffix(".exe"),
+               "OriginalFilename": filename,
+               "LegalCopyright": "Rune Advisor contributors. GPL-3.0-or-later. https://runeadvisor.com"}
+    return VSVersionInfo(
+        ffi=FixedFileInfo(filevers=numbers, prodvers=numbers, mask=0x3F, flags=0x0, OS=0x40004, fileType=0x1,
+                          subtype=0x0, date=(0, 0)),
+        kids=[StringFileInfo([StringTable("040904B0", [StringStruct(k, v) for k, v in strings.items()])]),
+              VarFileInfo([VarStruct("Translation", [0x0409, 1200])])])
+
+
 if mac:
     # One windowed executable inside an app bundle; from a terminal it is still the CLI:
     # "Rune Advisor.app/Contents/MacOS/rune-advisor" guide YourName
     exe = EXE(pyz, a.scripts, exclude_binaries=True, name="rune-advisor", console=False, upx=False)
+    ICNS = str(ROOT / "packaging" / "macos" / "rune-advisor.icns")
     coll = COLLECT(exe, a.binaries, a.datas, upx=False, name="rune-advisor")
-    BUNDLE(coll, name="Rune Advisor.app", bundle_identifier="com.runeadvisor.RuneAdvisor", version=VERSION,
+    BUNDLE(coll, name="Rune Advisor.app", icon=ICNS, bundle_identifier="com.runeadvisor.RuneAdvisor", version=VERSION,
            info_plist={"CFBundleDisplayName": "Rune Advisor", "NSHighResolutionCapable": True,
                        "LSMinimumSystemVersion": "12.0"})
 else:
     # console=True: the same executable is the CLI. On Windows a second, windowed executable opens the planner
     # without a console flashing up.
-    exes = [EXE(pyz, a.scripts, exclude_binaries=True, name="rune-advisor", console=True, strip=linux, upx=False)]
+    ICO = str(ROOT / "packaging" / "windows" / "rune-advisor.ico")
     if windows:
-        exes.append(EXE(pyz, a.scripts, exclude_binaries=True, name="Rune Advisor", console=False, upx=False))
+        exes = [EXE(pyz, a.scripts, exclude_binaries=True, name="rune-advisor", console=True, upx=False, icon=ICO,
+                    version=version_info("Rune Advisor command line", "rune-advisor.exe")),
+                EXE(pyz, a.scripts, exclude_binaries=True, name="Rune Advisor", console=False, upx=False, icon=ICO,
+                    version=version_info("Rune Advisor", "Rune Advisor.exe"))]
+    else:
+        exes = [EXE(pyz, a.scripts, exclude_binaries=True, name="rune-advisor", console=True, strip=True, upx=False)]
     COLLECT(*exes, a.binaries, a.datas, strip=linux, upx=False, name="rune-advisor")

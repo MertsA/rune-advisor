@@ -102,7 +102,23 @@ jobs:
         shell: pwsh
         run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
       - run: uv sync --frozen --python "$env:PYTHON" --extra ui --group package
-      - run: uv run --frozen --extra ui --group package scripts/build_app.py
+      # PyInstaller's wheel ships a ready-made launcher stub, the same file in every app made with it, malware
+      # included, which is what antivirus heuristics learn. Building PyInstaller from its source release
+      # compiles the stub here instead (same locked version; MSVC is on the runner).
+      - name: Compile PyInstaller's launcher from source
+        shell: pwsh
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
+        run: |
+          $stub = ".venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe"
+          $before = (Get-FileHash $stub).Hash
+          $version = uv run --no-sync python -c "import PyInstaller; print(PyInstaller.__version__)"
+          uv pip install --reinstall --no-deps --no-cache --no-binary pyinstaller "pyinstaller==$version"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $after = (Get-FileHash $stub).Hash
+          "stock launcher $before"; "built launcher $after"
+          if ($before -eq $after) { Write-Error "the launcher was not rebuilt"; exit 1 }
+      - run: uv run --no-sync scripts/build_app.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows
