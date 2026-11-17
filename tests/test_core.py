@@ -3058,6 +3058,18 @@ def test_site_policy_pages_are_rendered_from_their_documents():
         assert "<script" not in page and "style=" not in page  # the site's CSP allows neither inline
 
 
+def test_listing_description_matches_its_source():
+    """plugins/listing/description.html (pasted into Mod.io, which takes HTML) is rendered from the exporter's
+    README by `uv run python scripts/build_listing_html.py`."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("build_listing_html", Path(__file__).parent.parent / "scripts" / "build_listing_html.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    html_text = mod.render()
+    assert mod.OUT.read_text(encoding="utf-8") == html_text, f"{mod.OUT} is stale: run scripts/build_listing_html.py"
+    assert "subject to the Jagex EULA" in html_text and "<script" not in html_text and "\n<" not in html_text.replace(">\n<", "><")
+
+
 def test_export_api_manual_data_requests(tmp_path, capsys, monkeypatch):
     """`request find/delete-player/delete-account`: by character name, by account id, by a key or token; a dry
     run without --yes; a limited read token cannot delete; an ambiguous name needs the account."""

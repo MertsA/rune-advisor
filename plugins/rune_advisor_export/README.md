@@ -1,7 +1,9 @@
 # Rune Advisor Export
 
-*Text for the Plugin Hub (Mod.io) listing: everything below the line is the description. The same facts, in
-full, are at <https://runeadvisor.com/docs/data/>. The listing image is `../listing/rune-advisor-export.png`.*
+*Text for the Plugin Hub (Mod.io) listing: everything below the line is the description. Mod.io takes HTML,
+not Markdown: paste `../listing/description.html`, which `scripts/build_listing_html.py` renders from this
+file. The same facts, in full, are at <https://runeadvisor.com/docs/data/>. The listing image is
+`../listing/rune-advisor-export.png`.*
 
 *Summary (10 to 150 ASCII characters; Jagex asks that it not repeat the plugin's name):*
 `Sends your character's skills, quests, achievements and items to your planner, which suggests what to do next. Changes nothing in the game.`
