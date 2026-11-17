@@ -10,6 +10,7 @@ import json
 import tomllib
 from datetime import datetime
 from pathlib import Path
+from functools import cache
 from typing import Any
 
 import httpx
@@ -17,6 +18,7 @@ import httpx
 from . import config
 from .config import ARCHIVE_DIR, Settings
 from .drops import resolve_item_log
+from . import datapkg
 from .http import CachedClient
 from .models import Achievement, PlayerState, Quest, QuestStatus, Skill
 from .quests import REPLAYABLE_QUESTS, reconcile_journal_qp
@@ -502,11 +504,25 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
         stock: dict[str, int] = {}
         for item in inv.get("items", []):
             if item["count"] > 0:
-                stock[item["name"]] = stock.get(item["name"], 0) + item["count"]
+                name = item["name"]
+                # The server names items from its own table; this planner's may know an id that one lacks.
+                if name.startswith("Unknown item ") and isinstance(item.get("id"), int):
+                    name = _item_names().get(item["id"], name)
+                stock[name] = stock.get(name, 0) + item["count"]
                 if isinstance(item.get("id"), int):
-                    p.item_ids[item["name"]] = item["id"]
+                    p.item_ids[name] = item["id"]
         p.inventories[inv_name] = stock
     tier_names(p)
+
+
+@cache
+def _item_names() -> dict[int, str]:
+    """Item id -> name from data/item_names.json (scripts/build_item_names.py)."""
+    try:
+        raw = json.loads(datapkg.path("item_names.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return {int(k): v["name"] for k, v in raw.get("items", {}).items() if v.get("name")}
 
 
 def tier_names(p: PlayerState) -> None:

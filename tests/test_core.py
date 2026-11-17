@@ -4752,3 +4752,23 @@ def test_export_api_deletions_survive_a_restore(tmp_path):
     assert plain.deletions_file is None and plain.reapply_deletions() == 0
     assert sorted(p.name for p in (tmp_path / "plain").iterdir())[0].startswith("export_api.sqlite3")
     plain.close()
+
+
+def test_reward_books_and_black_pearls_are_xp_in_hand():
+    """D&D reward books (told apart by item id: both are "Reward book" in game) are xp in any skill, black
+    pearls a medium star's bonus xp; an id the server could not name takes this planner's name."""
+    from rune_advisor import player as players
+    from rune_advisor.resources import load_pool, rush_book_xp, troll_book_xp
+    from rune_advisor.xp import star_xp
+
+    p = PlayerState(name="PlayerOne")
+    players.apply_plugin_snapshot(p, {"schema": 1, "inventories": {"INV": {"items": [
+        {"id": 31371, "name": "Unknown item 31371", "count": 2},
+        {"id": 32193, "name": "Reward book (Rush of Blood)", "count": 1}]},
+        "BANK": {"items": [{"id": 20935, "name": "Reward book", "count": 1}]}}})
+    assert p.holdings["Black pearl"] == 2 and p.item_ids["Black pearl"] == 31371
+    pool = {r.source or r.name: r for r in load_pool(p).resources if r.units}
+    pearl, troll, rush = pool["Black pearl"], pool["Troll Invasion"], pool["Rush of Blood"]
+    assert pearl.bonus and pearl.units == 2 and pearl.xp_per_unit(90) == star_xp(90, "medium")
+    assert not troll.bonus and troll.skills is None and troll.xp_per_unit(99) == troll_book_xp(99) == 77_624
+    assert rush.xp_per_unit(99) == rush_book_xp(99) == 7_500 and rush.xp_per_unit(50) < 7_500 and not rush.verified

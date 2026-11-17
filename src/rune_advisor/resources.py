@@ -31,7 +31,7 @@ import tomllib
 from functools import cache
 from dataclasses import dataclass, field
 from . import datapkg
-from typing import Any
+from typing import Any, Callable
 
 from .models import PlayerState
 from .xp import SKILL_ALIASES, lamp_xp, level_at_xp, star_xp
@@ -61,8 +61,12 @@ class Resource:
     # The skill must be at least this level to take the xp (task-set antique lamps: 85 for an elite set).
     min_level: int = 1
     verified: bool = False  # False until the xp formula has been checked against the wiki
+    # xp per unit at a level, for rewards with a curve of their own (reward books); beats xp_fixed/xp_per_level.
+    xp_fn: Callable[[int], float] | None = None
 
     def xp_per_unit(self, level: int, skill: str | None = None) -> float:
+        if self.xp_fn:
+            return self.xp_fn(level)
         if self.star:
             return star_xp(level, self.star) * self.scale
         if self.lamp:
@@ -111,6 +115,7 @@ def load_pool(player: PlayerState, extra: list[dict[str, Any]] | None = None) ->
                 continue
             r.units = player.holdings[r.item]
     pool += star_resources(player.holdings)
+    pool += book_resources(player)
     pool += set_lamp_resources(player.holdings)
     if player.penguin_points:
         pool.append(Resource(name="Penguin points", source="Larry/Chuck at the Ardougne Zoo (Spy Club lamps)",
@@ -161,10 +166,19 @@ _STAR_NAMES = [
 ]
 
 
+# Items that pay a fallen star's bonus xp under another name: the black pearls from the weekly Agoroth fight
+# ("experience equal to that of a medium fallen star", the wiki's Black pearl page; any skill). The quest's
+# own pearls, "Black pearl (A Shadow over Ashdale)", pay differently and are not counted.
+STAR_LIKE = {"Black pearl": "medium"}
+
+
 def star_resources(holdings: dict[str, int]) -> list[Resource]:
     """Bonus-xp stars among the player's items (prismatic ones work on any skill)."""
     found = []
     for name, count in holdings.items():
+        if name in STAR_LIKE:
+            found.append(Resource(name=name, star=STAR_LIKE[name], units=count, verified=True))
+            continue
         for pattern in _STAR_NAMES:
             if m := pattern.match(name):
                 skill = (m.groupdict().get("skill") or "").capitalize()
@@ -172,6 +186,42 @@ def star_resources(holdings: dict[str, int]) -> list[Resource]:
                 found.append(Resource(name=name, star=m["size"].lower(), units=count, verified=True,
                                       skills={skill} if skill else None))
                 break
+    return found
+
+
+def troll_book_xp(level: int) -> float:
+    """Troll Invasion's reward book after a full defence: 8 x (L^2 - 2L + 100) in the chosen skill (the wiki's
+    formula; a partial run pays its share of the waves)."""
+    return 8 * (level * level - 2 * level + 100)
+
+
+# Rush of Blood's reward book: the wiki gives three figures only, at level 99 after all 20 waves (bronze 7,500,
+# silver 13,153, platinum 23,294) and says the xp depends on the challenge, the waves and the level. The item
+# does not say which run it came from, so it counts as the least of them, and the level curve is assumed to be
+# the Troll Invasion book's shape.
+RUSH_BOOK_XP_AT_99 = 7_500
+
+
+def rush_book_xp(level: int) -> float:
+    return RUSH_BOOK_XP_AT_99 * troll_book_xp(level) / troll_book_xp(99)
+
+
+# The two books are both "Reward book" in game; the export's item id tells them apart.
+TROLL_BOOK_IDS, RUSH_BOOK_IDS = {20935, 20936}, {32193}
+
+
+def book_resources(player: PlayerState) -> list[Resource]:
+    """D&D reward books among the player's items: xp in any skill, read whenever the player likes."""
+    found = []
+    for name, count in player.holdings.items():
+        item_id = player.item_ids.get(name)
+        if item_id in TROLL_BOOK_IDS or (item_id is None and name == "Reward book"):
+            found.append(Resource(name="Reward book (Troll Invasion; a full defence assumed)", source="Troll Invasion",
+                                  xp_fn=troll_book_xp, units=count, hours_per_unit=LAMP_RUB_HOURS, verified=True))
+        elif item_id in RUSH_BOOK_IDS or (item_id is None and name == "Reward book (Rush of Blood)"):
+            found.append(Resource(name="Reward book (Rush of Blood; at least this: a bronze run assumed)",
+                                  source="Rush of Blood", xp_fn=rush_book_xp, units=count,
+                                  hours_per_unit=LAMP_RUB_HOURS))
     return found
 
 

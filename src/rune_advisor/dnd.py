@@ -15,6 +15,7 @@ from . import datapkg
 from typing import Callable
 
 from .models import PlayerState
+from .resources import troll_book_xp
 from .xp import lamp_xp
 
 DATA = "dnd_resets.json"
@@ -178,9 +179,7 @@ NOMAD_ITEMS = {"Gold charm": 15 / 4, "Green charm": 15 / 4, "Crimson charm": 15 
 # --- monthly -------------------------------------------------------------------------------------------------------
 
 
-def troll_invasion_xp(level: int) -> float:
-    """The reward book at full completion: 8 x (L^2 - 2L + 100) in the chosen skill (wiki formula)."""
-    return 8 * (level * level - 2 * level + 100)
+troll_invasion_xp = troll_book_xp  # the reward book at full completion
 
 
 GOD_STATUES = 5  # one statue a location; Construction xp = a large lamp each, Prayer (to 99) or Slayer = a medium lamp
