@@ -69,7 +69,6 @@ TRANSLATIONS, KEPT_LOCALE = QT + "translations/", QT + "translations/qtwebengine
 HOST_LIBS = re.compile(r"^lib(stdc\+\+|gcc_s|fontconfig|freetype|harfbuzz|expat|z|drm|gbm|glapi|GL|EGL|GLX|GLdispatch|"
                        r"OpenGL|wayland-[a-z]+|X11|X11-xcb|xcb|xcb-dri[23]|xcb-glx|xcb-present|xcb-sync|xcb-xfixes|"
                        r"xcb-randr|xcb-shm|xshmfence|Xau|Xdmcp|Xext|zstd|"
-                       r"
                        r"asound|glib-2\.0|gobject-2\.0|gio-2\.0|gmodule-2\.0|gthread-2\.0|dbus-1|systemd|udev)\.so(\.|$)")
 
 
