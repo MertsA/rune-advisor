@@ -111,6 +111,10 @@ jobs:
           PYINSTALLER_COMPILE_BOOTLOADER: "1"
         run: |
           set +e +o pipefail
+          # Build under a plain path: the default temp folder is reached through a short name (RUNNER~1), which
+          # the launcher's build system cannot relate to the same folder's long name.
+          mkdir -p "$RUNNER_TEMP/b"
+          export TEMP="$RUNNER_TEMP\\b" TMP="$RUNNER_TEMP\\b"
           stub=.venv/Lib/site-packages/PyInstaller/bootloader/Windows-64bit-intel/runw.exe
           {
             before=$(sha256sum "$stub" | cut -d" " -f1)
