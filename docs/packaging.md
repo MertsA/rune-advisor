@@ -88,8 +88,8 @@ window, no console) and `rune-advisor.exe` (the CLI). The installer is Inno Setu
 `%LOCALAPPDATA%\Programs\Rune Advisor`, with a Start menu entry and an uninstaller; settings and state are
 left alone by an uninstall.
 
-Written without a Windows machine: the first CI run is its first test, and nobody has opened the window on
-Windows yet. Still to do: an icon, version details on the executables (SignPath wants the same product name
+Written without a Windows machine. CI builds it and the frozen CLI passes its start check there (2026-11-16,
+a 31 MB installer); nobody has run the installer or opened the window on Windows yet. Still to do: an icon, version details on the executables (SignPath wants the same product name
 and version on every signed file), showing the privacy policy in the installer, signing.
 
 ## macOS
@@ -98,7 +98,8 @@ and version on every signed file), showing the privacy policy in the installer, 
 GitHub's runner is; an Intel build would be a second job). pywebview uses the system's WebKit. From a
 terminal the CLI is `"/Applications/Rune Advisor.app/Contents/MacOS/rune-advisor" guide YourName`.
 
-As untested as Windows, and more exposed: the app is only ad-hoc signed, not notarised, so macOS refuses to
+CI builds it and the frozen CLI starts there (26 MB); the window has never been opened on a Mac. It is more
+exposed than Windows: the app is only ad-hoc signed, not notarised, so macOS refuses to
 open it until the user allows it under System Settings > Privacy & Security (notarising needs Apple's
 developer programme, $99 a year). The plugin database's default location on macOS is a guess (Steam's
 library); whether the game's plugin system runs on macOS at all has not been checked.
