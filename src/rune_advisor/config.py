@@ -13,8 +13,9 @@ USER_AGENT = "RuneAdvisor/0.1 (RuneScape planning tool; https://runeadvisor.com;
 # The clients' plugin PersistentDB for a Steam install in Steam's default library. The Steam build keeps its
 # cache/user folder inside the game folder (steamapps/common/RuneScape/RuneScape), and the plugin beta world
 # (where dev plugins run) keeps its own beside it. A library elsewhere: `plugin_db` / `beta_plugin_db` in
-# rune_advisor.toml, or RUNE_ADVISOR_PLUGIN_DB. The Windows location is the installer's default, not verified.
+# rune_advisor.toml, or RUNE_ADVISOR_PLUGIN_DB. The Windows and macOS locations are Steam's defaults, not verified.
 _STEAM = (Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Steam" if sys.platform == "win32"
+          else Path.home() / "Library" / "Application Support" / "Steam" if sys.platform == "darwin"
           else Path.home() / ".local" / "share" / "Steam")
 _STEAM_RS = _STEAM / "steamapps" / "common" / "RuneScape"
 DEFAULT_PLUGIN_DB = _STEAM_RS / "RuneScape" / "plugins" / "PluginData.db"
@@ -33,11 +34,17 @@ def _user_dir(kind: str) -> Path:
 
     Linux: the XDG base directories (~/.config, ~/.local/share, ~/.local/state, ~/.cache) + rune-advisor.
     Windows: %APPDATA%\\rune-advisor for settings (roams), %LOCALAPPDATA%\\rune-advisor\\<kind> for the rest.
+    macOS: ~/Library/Application Support/rune-advisor (settings in it, the rest in <kind>/), ~/Library/Caches.
     """
     if os.name == "nt":
         if kind == "config":
             return Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "rune-advisor"
         return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "rune-advisor" / kind
+    if sys.platform == "darwin":
+        if kind == "cache":
+            return Path.home() / "Library" / "Caches" / "rune-advisor"
+        base = Path.home() / "Library" / "Application Support" / "rune-advisor"
+        return base if kind == "config" else base / kind
     env, fallback = {"config": ("XDG_CONFIG_HOME", ".config"), "data": ("XDG_DATA_HOME", ".local/share"),
                      "state": ("XDG_STATE_HOME", ".local/state"), "cache": ("XDG_CACHE_HOME", ".cache")}[kind]
     return Path(os.environ.get(env) or Path.home() / fallback) / "rune-advisor"
@@ -54,7 +61,7 @@ ARCHIVE_DIR = STATE_DIR / "archive"
 # Installed data packages (rune_advisor.datapkg), apart from the kept planner state above.
 # ~/.local/share/rune-advisor/data, %LOCALAPPDATA%\\rune-advisor\\data.
 DATA_HOME = Path(os.environ.get("RUNE_ADVISOR_DATA_HOME")
-                 or (_user_dir("data") if os.name == "nt" else _user_dir("data") / "data"))
+                 or (_user_dir("data") / "data" if sys.platform.startswith("linux") else _user_dir("data")))
 
 
 def user_file(name: str) -> Path:

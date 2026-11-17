@@ -8,13 +8,18 @@ and the window's files in one folder), then wraps the folder for the platform it
 
 - Linux: `RuneAdvisor-<version>-x86_64.AppImage`, one executable file. No arguments opens the planner window;
   with arguments it is the CLI (`./RuneAdvisor-...AppImage guide YourName`).
-- Windows: the frozen folder only, for now; the installer step comes with the Windows CI job.
+- Windows: `RuneAdvisor-<version>-windows-x64-setup.exe`, a per-user installer made with Inno Setup
+  (packaging/windows/rune-advisor.iss; needs `iscc` on the PATH or in its default folder).
+- macOS: `RuneAdvisor-<version>-macos-<arch>.dmg` holding `Rune Advisor.app`.
+
+Before wrapping, the frozen program is run once (`data status`, with an empty home folder) so a bundle that
+cannot start fails the build.
 
 PyInstaller does not cross-build: each platform's app is built on that platform. A build is portable to systems
 with the same or a newer glibc than the build machine's, so release builds run in CI on an old base image; a
 build made on a current Arch is for testing.
 
-The build records the commit it was made from (`BUILD` in the bundle) and refuses a tree with uncommitted
+The build records the commit it was made from (`BUILD` beside the bundled LICENSE) and refuses a tree with uncommitted
 changes unless told otherwise, so a released file can be traced to a commit. Timestamps inside the AppImage
 are the commit's.
 """
@@ -28,6 +33,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -92,15 +98,72 @@ def commit_info(allow_dirty: bool) -> dict:
             "commit_time": int(git("log", "-1", "--format=%ct"))}
 
 
-def freeze(work: Path) -> Path:
-    """Run PyInstaller; return the one-folder bundle."""
+def freeze(work: Path, info: dict) -> Path:
+    """Run PyInstaller; return the one-folder bundle (on macOS: the .app)."""
     if not (ROOT / "src" / "rune_advisor" / "data" / "mechanics.json").exists():
         raise SystemExit("src/rune_advisor/data is empty: git submodule update --init")
     dist = work / "frozen"
+    # The spec adds this file to the bundle. It goes in at freeze time because a macOS app is sealed by its
+    # signature when PyInstaller finishes: adding a file afterwards would break it.
+    work.mkdir(parents=True, exist_ok=True)
+    build_file = work / "BUILD"
+    build_file.write_text(json.dumps(info, indent=1) + "\n")
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--log-level", "WARN",
                     "--distpath", str(dist), "--workpath", str(work / "pyinstaller"), str(SPEC)],
-                   check=True, cwd=ROOT)
-    return dist / "rune-advisor"
+                   check=True, cwd=ROOT, env={**os.environ, "RUNE_ADVISOR_BUILD_FILE": str(build_file)})
+    return dist / ("Rune Advisor.app" if sys.platform == "darwin" else "rune-advisor")
+
+
+def executable(bundle: Path) -> Path:
+    if sys.platform == "darwin":
+        return bundle / "Contents" / "MacOS" / "rune-advisor"
+    return bundle / ("rune-advisor.exe" if sys.platform == "win32" else "rune-advisor")
+
+
+def smoke(bundle: Path) -> None:
+    """Start the frozen program as a new user would have it: no settings, no state, another working directory."""
+    with tempfile.TemporaryDirectory() as home:
+        env = {**os.environ, "HOME": home, "USERPROFILE": home, "APPDATA": str(Path(home) / "Roaming"),
+               "LOCALAPPDATA": str(Path(home) / "Local")}
+        for name in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "RUNE_ADVISOR_CONFIG",
+                     "RUNE_ADVISOR_STATE", "RUNE_ADVISOR_DATA_HOME", "RUNE_ADVISOR_CACHE"):
+            env.pop(name, None)
+        done = subprocess.run([str(executable(bundle)), "data", "status"], cwd=home, env=env, capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", timeout=300)
+    if done.returncode != 0 or "bundled" not in done.stdout:
+        raise SystemExit(f"the frozen program failed its start check (exit {done.returncode}):\n"
+                         f"{done.stdout}\n{done.stderr}")
+
+
+def windows_installer(bundle: Path, info: dict, out: Path) -> Path:
+    iscc = shutil.which("iscc") or shutil.which("ISCC")
+    if not iscc:
+        default = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Inno Setup 6" / "ISCC.exe"
+        if not default.exists():
+            raise SystemExit("Inno Setup's iscc not found: install Inno Setup 6")
+        iscc = str(default)
+    out.mkdir(parents=True, exist_ok=True)
+    subprocess.run([iscc, "/Qp", f"/DAppVersion={info['version']}", f"/DBundle={bundle}", f"/DOutDir={out.resolve()}",
+                    str(ROOT / "packaging" / "windows" / "rune-advisor.iss")], check=True)
+    return out / f"RuneAdvisor-{info['version']}-windows-x64-setup.exe"
+
+
+def mac_disk_image(bundle: Path, info: dict, work: Path, out: Path) -> Path:
+    """A disk image with the app and a link to /Applications to drag it onto."""
+    import platform
+
+    stage = work / "dmg"
+    if stage.exists():
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True)
+    shutil.copytree(bundle, stage / bundle.name, symlinks=True)
+    (stage / "Applications").symlink_to("/Applications")
+    out.mkdir(parents=True, exist_ok=True)
+    arch = "arm64" if platform.machine() == "arm64" else "x86_64"
+    target = out / f"RuneAdvisor-{info['version']}-macos-{arch}.dmg"
+    subprocess.run(["hdiutil", "create", "-volname", "Rune Advisor", "-srcfolder", str(stage), "-ov",
+                    "-format", "UDZO", str(target)], check=True)
+    return target
 
 
 def runtime(cache: Path) -> bytes:
@@ -132,7 +195,6 @@ def appimage(bundle: Path, info: dict, work: Path, out: Path) -> Path:
     meta = appdir / "usr" / "share" / "metainfo"
     meta.mkdir(parents=True)
     (meta / f"{APP_ID}.appdata.xml").write_text(METAINFO)
-    (appdir / "BUILD").write_text(json.dumps(info, indent=1) + "\n")
 
     image = work / "app.squashfs"
     image.unlink(missing_ok=True)
@@ -157,15 +219,14 @@ def main() -> int:
     args = ap.parse_args()
 
     info = commit_info(args.allow_dirty)
-    bundle = freeze(args.work)
+    bundle = freeze(args.work, info)
+    smoke(bundle)
     if sys.platform.startswith("linux"):
         result = appimage(bundle, info, args.work, args.out)
     else:
-        (bundle / "BUILD").write_text(json.dumps(info, indent=1) + "\n")
-        result = bundle
-    size = (sum(p.stat().st_size for p in result.rglob("*") if p.is_file()) if result.is_dir()
-            else result.stat().st_size)
-    print(f"built {result} ({size / 1e6:.0f} MB) from {info['commit'][:12]}, data {info['data_commit'][:12]}")
+        result = (windows_installer(bundle, info, args.out) if sys.platform == "win32"
+                  else mac_disk_image(bundle, info, args.work, args.out))
+    print(f"built {result} ({result.stat().st_size / 1e6:.0f} MB) from {info['commit'][:12]}, data {info['data_commit'][:12]}")
     return 0
 
 

@@ -1,7 +1,8 @@
 # Packaging
 
-How the planner becomes something a player can install. Targets: Linux (AppImage first; Arch and Fedora
-packages later) and Windows.
+How the planner becomes something a player can install: an AppImage for Linux, an installer for Windows and a
+disk image for macOS, all built by one script and by CI (`.github/workflows/build.yml`). Arch and Fedora
+packages come later.
 
 ## The frozen app
 
@@ -13,22 +14,33 @@ the CLI.
     uv run --extra ui --group package scripts/build_app.py            # refuses uncommitted changes
     uv run --extra ui --group package scripts/build_app.py --allow-dirty   # test build
 
-The result goes to `dist/` (ignored). The bundle holds a `BUILD` file naming the version, the commit and the
-data submodule's commit, so a released file can be traced to its source.
+The result goes to `dist/` (ignored). The bundle holds a `BUILD` file (beside the bundled `LICENSE`) naming the
+version, the commit and the data submodule's commit, so a released file can be traced to its source. Before
+wrapping, the script starts the frozen program once with an empty home folder (`data status`); a bundle that
+cannot start fails the build.
 
-PyInstaller does not cross-build: the Linux app is built on Linux, the Windows app on Windows.
+PyInstaller does not cross-build: each platform's app is built on that platform, which is what the CI jobs do.
+
+## CI and releases
+
+`.github/workflows/build.yml`: pytest (with the Lua scripts) on every push and pull request; on pushes to
+`main` and on tags, the three build jobs, each uploading its file as a workflow artifact. A tag `v<version>`
+also drafts a GitHub release with the three files, `SHA256SUMS` and a build provenance attestation for each
+(`gh attestation verify <file> --repo MertsA/rune-advisor` proves a download came from this workflow).
+The draft is published by hand. The version is `__version__` in `src/rune_advisor/__init__.py`: bump it (and
+`pyproject.toml`) in the tagged commit. Actions are pinned to commits.
 
 ## Where an installed app keeps things
 
 A source checkout keeps settings and state in the working tree, as before. An installed app (frozen, or a
 wheel outside a checkout: `config.CHECKOUT` is None) uses the user's folders:
 
-| | Linux | Windows |
-| --- | --- | --- |
-| settings (`rune_advisor.toml`, `overrides.toml`) | `~/.config/rune-advisor/` | `%APPDATA%\rune-advisor\` |
-| state (archives, seen items, window prefs) | `~/.local/state/rune-advisor/` | `%LOCALAPPDATA%\rune-advisor\state\` |
-| data packages | `~/.local/share/rune-advisor/data/` | `%LOCALAPPDATA%\rune-advisor\data\` |
-| cache | `~/.cache/rune-advisor/` | `%LOCALAPPDATA%\rune-advisor\cache\` |
+| | Linux | Windows | macOS (under `~/Library`) |
+| --- | --- | --- | --- |
+| settings (`rune_advisor.toml`, `overrides.toml`) | `~/.config/rune-advisor/` | `%APPDATA%\rune-advisor\` | `Application Support/rune-advisor/` |
+| state (archives, seen items, window prefs) | `~/.local/state/rune-advisor/` | `%LOCALAPPDATA%\rune-advisor\state\` | `Application Support/rune-advisor/state/` |
+| data packages | `~/.local/share/rune-advisor/data/` | `%LOCALAPPDATA%\rune-advisor\data\` | `Application Support/rune-advisor/data/` |
+| cache | `~/.cache/rune-advisor/` | `%LOCALAPPDATA%\rune-advisor\cache\` | `Caches/rune-advisor/` |
 
 Linux follows the `XDG_*_HOME` variables. A settings file in the working directory still wins, and the
 `RUNE_ADVISOR_CONFIG` / `_STATE` / `_CACHE` / `_DATA_HOME` variables override everything.
@@ -44,20 +56,22 @@ File times inside the image are the commit's.
     ./RuneAdvisor-0.1.0-x86_64.AppImage guide YourName     # the CLI
     ./RuneAdvisor-0.1.0-x86_64.AppImage --appimage-extract-and-run   # on a system without FUSE
 
-About 210 MB, nearly all of it Qt WebEngine (the window's browser engine, from the PyQt6 wheels).
+About 150 MB, nearly all of it Qt WebEngine (the window's browser engine, from the PyQt6 wheels). The spec
+trims what the window never uses: Qt's QML modules, translations (one browser locale is kept), developer
+tools, embedded-device plugins and the GTK theme plugin, then every library only those needed (213 MB
+before). What is left is the engine itself (about 200 MB unpacked) and its ICU data.
 
 Known limits:
 
 - **glibc.** A build runs on systems with the same or a newer glibc than the build machine's, because
-  PyInstaller collects some system libraries. Release builds must be made on an old base (an
-  Ubuntu 22.04 CI runner or older); a build made on a current Arch is for testing on current systems.
-- **X11 libraries.** Qt's X11 plugin needs `libxcb-cursor`, `libxcb-icccm`, `libxcb-image`, `libxcb-keysyms`,
-  `libxcb-render-util`, `libxcb-util` and `libxkbcommon-x11`. PyInstaller bundles them when the build machine
-  has them and only warns when it does not: the release build machine must have them installed, or the app
-  will start on Wayland only.
-- Checked so far: the CLI, and the window with `QT_QPA_PLATFORM=offscreen`, with an empty home folder. Not
-  yet started on a real desktop.
-- Not trimmed: Qt's translations and unused Qt modules could come out (roughly 60-100 MB unpacked).
+  PyInstaller collects some system libraries. CI builds in an `ubuntu:22.04` container (glibc 2.35; the Qt
+  wheels themselves need 2.34), so releases run on Ubuntu 22.04, Fedora 36, Debian 12 and newer. A build
+  made on a current Arch is for testing on current systems.
+- **X11 libraries.** Qt's X11 plugin loads `libxcb-cursor` and friends; PyInstaller bundles them from the
+  build machine and only warns when they are missing (then the app starts on Wayland only). The CI job
+  installs them; the sandbox does not have them.
+- Checked so far: the CLI, and the window with `QT_QPA_PLATFORM=offscreen` (CI repeats that check), with an
+  empty home folder. Not yet started on a real desktop.
 
 ## Linux: distribution packages (not built yet)
 
@@ -65,11 +79,29 @@ Arch (AUR `PKGBUILD`) and Fedora (COPR spec) packages would depend on the distri
 Qt WebEngine and install only the wheel: a few MB, updated by the system. Both need a public source tag to
 build from.
 
-## Windows (not built yet)
+## Windows
 
-The same spec freezes on Windows: pywebview uses the system's WebView2 there, so no Qt (a much smaller
-bundle), with a console executable for the CLI and a windowed one for the planner. Still to do: a Windows CI
-job, an installer with an uninstaller (Inno Setup), and signing.
+`RuneAdvisor-<version>-windows-x64-setup.exe`. pywebview uses the system's WebView2 (part of Windows 11 and
+of updated Windows 10), so there is no Qt and the bundle is small. Two executables: `Rune Advisor.exe` (the
+window, no console) and `rune-advisor.exe` (the CLI). The installer is Inno Setup
+(`packaging/windows/rune-advisor.iss`): per user, no administrator prompt, into
+`%LOCALAPPDATA%\Programs\Rune Advisor`, with a Start menu entry and an uninstaller; settings and state are
+left alone by an uninstall.
+
+Written without a Windows machine: the first CI run is its first test, and nobody has opened the window on
+Windows yet. Still to do: an icon, version details on the executables (SignPath wants the same product name
+and version on every signed file), showing the privacy policy in the installer, signing.
+
+## macOS
+
+`RuneAdvisor-<version>-macos-arm64.dmg` holding `Rune Advisor.app` (Apple silicon only: that is what
+GitHub's runner is; an Intel build would be a second job). pywebview uses the system's WebKit. From a
+terminal the CLI is `"/Applications/Rune Advisor.app/Contents/MacOS/rune-advisor" guide YourName`.
+
+As untested as Windows, and more exposed: the app is only ad-hoc signed, not notarised, so macOS refuses to
+open it until the user allows it under System Settings > Privacy & Security (notarising needs Apple's
+developer programme, $99 a year). The plugin database's default location on macOS is a guess (Steam's
+library); whether the game's plugin system runs on macOS at all has not been checked.
 
 ### Code signing
 

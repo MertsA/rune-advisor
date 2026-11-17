@@ -1,0 +1,139 @@
+# Tests on every push and pull request; the installable planner app for Linux, Windows and macOS on pushes to
+# main and on version tags. A tag (v0.1.0) also drafts a GitHub release with the three files, their SHA-256
+# sums and build provenance attestations; publishing the draft is done by hand.
+#
+# Actions are pinned to commits. docs/packaging.md describes what the build jobs produce.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+env:
+  PYTHON: "3.13"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends lua5.4
+      - run: uv sync --frozen --python "$PYTHON"
+      - run: uv run --frozen pytest -q
+
+  linux:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    # An old base on purpose: the app runs on systems with this glibc (2.35) or newer. The Qt wheels need 2.34.
+    container: ubuntu:22.04
+    steps:
+      # git before the checkout (for the submodule); binutils for PyInstaller; squashfs-tools for the AppImage;
+      # the xcb libraries are what Qt's X11 plugin loads, bundled from here; the rest is what Qt links to.
+      - run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git ca-certificates curl binutils squashfs-tools \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-util1 \
+            libxcb-shape0 libxcb-xkb1 libxcb-xinerama0 libxcb-randr0 libxcb-xfixes0 libxcb-sync1 libxcb-shm0 \
+            libxkbcommon-x11-0 libxkbcommon0 libxkbfile1 libx11-xcb1 libegl1 libgl1 libfontconfig1 libfreetype6 \
+            libdbus-1-3 libglib2.0-0 libnss3 libnspr4 libasound2 libxcomposite1 libxdamage1 libxrandr2 libxtst6 \
+            libxi6 libxrender1 libwayland-client0 libwayland-cursor0 libwayland-egl1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      # The checkout belongs to another user than the container's root: git refuses it otherwise.
+      - run: git config --global --add safe.directory '*'
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv sync --frozen --python "$PYTHON" --extra ui --group package
+      - run: uv run --frozen --extra ui --group package scripts/build_app.py
+      # The window itself, without a display: it must load its page and stay up until the timeout ends it.
+      - name: Window start check
+        run: |
+          set +e
+          QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox HOME=$(mktemp -d) \
+            timeout 30 dist/RuneAdvisor-*.AppImage --appimage-extract-and-run
+          code=$?
+          echo "exit $code"
+          test $code -eq 124
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux
+          path: dist/RuneAdvisor-*.AppImage
+          if-no-files-found: error
+          compression-level: 0
+
+  windows:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Inno Setup
+        shell: pwsh
+        run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+      - run: uv sync --frozen --python "$env:PYTHON" --extra ui --group package
+      - run: uv run --frozen --extra ui --group package scripts/build_app.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows
+          path: dist/RuneAdvisor-*-setup.exe
+          if-no-files-found: error
+          compression-level: 0
+
+  macos:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: macos-latest   # Apple silicon
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv sync --frozen --python "$PYTHON" --extra ui --group package
+      - run: uv run --frozen --extra ui --group package scripts/build_app.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos
+          path: dist/RuneAdvisor-*.dmg
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # create the draft release
+      id-token: write        # sign the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: release
+          merge-multiple: true
+      - run: cd release && sha256sum RuneAdvisor-* > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/RuneAdvisor-*
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Rune Advisor ${TAG#v}" --generate-notes
