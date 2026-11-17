@@ -32,7 +32,15 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends lua5.4
       - run: uv sync --frozen --python "$PYTHON"
-      - run: uv run --frozen pytest -q
+      # Failing tests are repeated as annotations, which show on the run's summary page without opening the log.
+      - name: pytest
+        shell: bash
+        run: |
+          uv run --frozen pytest -q -rf --tb=short 2>&1 | tee pytest.log
+          code=${PIPESTATUS[0]}
+          grep -E "^(FAILED|ERROR) " pytest.log | head -10 | while read -r line; do echo "::error title=pytest::$line"; done
+          grep -E "^E  " pytest.log | head -12 | while read -r line; do echo "::error title=pytest detail::$line"; done
+          exit $code
 
   linux:
     if: github.event_name != 'pull_request'
