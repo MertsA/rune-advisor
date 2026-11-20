@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ..cost import row_skills, typical_rate
-from ..drops import estimated_kills_per_hour, kills_per_hour, sources_of, tables
+from ..drops import drop_chance, estimated_kills_per_hour, kills_per_hour, sources_of, tables
 
 if TYPE_CHECKING:
     from .base import Context
@@ -26,6 +26,10 @@ MIN_SOURCE_NAME = 6
 MIN_SINGLE_WORD_NAME = 8
 MAX_NAME_WORDS = 6
 _WORD = re.compile(r"[\w'\-.]+")
+# A drop rarer than this per kill doesn't make killing the source a way to an achievement's item: shared
+# tables reach down to 1/2,796,203 (the mega-rare rows the gem drop table carries onto Vyrewatch, which
+# had them "advancing" Bury All through Hardened dragon bones, 2026-11-20).
+MIN_ACHIEVEMENT_DROP_CHANCE = 1 / 10_000
 _KILL_VERBS = re.compile(r"\b(kill|defeat|slay|cleanse|catch|pickpocket|loot|destroy|complete \d+ (?:runs|kills))", re.I)
 
 
@@ -112,9 +116,11 @@ class Activities:
 
     def achievements_at(self, source: str) -> list[tuple[str, int]]:
         """Unfinished achievements (name, RuneScore) that killing/looting `source` advances: kill counts
-        that name it, or item requirements it drops."""
+        that name it, or item requirements it drops at MIN_ACHIEVEMENT_DROP_CHANCE or better. An item the
+        player already holds needs no drop (bury the banked bones)."""
         if self._by_source is None:
             index: dict[str, list[tuple[str, int]]] = {}
+            held = {n.lower() for n, q in self.ctx.player.holdings.items() if q > 0}
             for a in self.ctx.player.achievements.values():
                 if a.completed or a.runescore <= 0:
                     continue
@@ -122,8 +128,11 @@ class Activities:
                 if any((t.get("totalValue") or 0) > 1 for t in a.requirements):
                     srcs |= self.named_sources(self.ctx.achievement_descriptions.get(a.name, ""))
                 for t in a.requirements:
-                    if not t.get("complete") and t.get("description"):
-                        srcs |= {src for src, _, _ in sources_of(t["description"])}
+                    item = t.get("description")
+                    if t.get("complete") or not item or item.lower() in held:
+                        continue
+                    srcs |= {src for src, chance, _ in sources_of(item)
+                             if (drop_chance(chance)[0] or 0) >= MIN_ACHIEVEMENT_DROP_CHANCE}
                 for src in srcs:
                     index.setdefault(src, []).append((a.name, a.runescore))
             self._by_source = index

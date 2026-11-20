@@ -1073,6 +1073,24 @@ def test_activity_costs_for_achievements():
     assert ("After the Flood", 10) in ctx.activities.achievements_at("The Gate of Elidinis")
 
 
+def test_achievement_drops_need_a_real_chance_and_a_missing_item():
+    """Bury All's item tests: a source counts only when it drops the item at a usable chance (Vyrewatch's
+    mega-rare Hardened dragon bones, 1/2,796,203, don't), and not at all for bones already in the bank."""
+    from rune_advisor.models import Achievement
+
+    def bury(item):
+        return {"kind": "varBit", "description": item, "complete": False, "group": 0}
+
+    p = PlayerState(name="X")
+    p.achievements = {"Bury All": Achievement("Bury All", 20, False, requirements=[
+        bury("Hardened dragon bones"), bury("Monkey bones"), bury("Frost dragon bones")])}
+    p.inventories = {"BANK": {"Frost dragon bones": 3}}
+    acts = Context(player=p, cost=CostModel.default(player=p), achievement_descriptions={}).activities
+    assert ("Bury All", 20) not in acts.achievements_at("Vyrewatch (Darkmeyer)")  # 1/2.8m: no route
+    assert ("Bury All", 20) in acts.achievements_at("Monkey")  # always drops monkey bones
+    assert ("Bury All", 20) not in acts.achievements_at("Frost dragon")  # held: just bury one
+
+
 def test_item_prerequisites():
     from rune_advisor.requirements import items_named, missing_items
 
