@@ -186,6 +186,28 @@ def replaced_by_sims(rows: list[dict]) -> tuple[list[dict], list[tuple[str, str,
     return kept, replaced
 
 
+# Activities a player can't repeat at will (a daily cap, a spawn timer): a guide's rate is the pace while one
+# lasts, not a way to train for hours, so their rows aren't training methods. CostModel.limited keeps them for
+# planning daily activities later (with Daily Challenges and D&Ds). The Uncharted Isles nodes come from
+# sim.DAILY_NODES (their gathering is costed with the days, Gatherer._simulated). Matched like
+# mechanics.covers: every word of the name in the method.
+LIMITED_ACTIVITIES = {
+    "Evil Tree": "a Distraction and Diversion: one tree per spawn",
+}
+
+
+def limited_activity(row: dict) -> str | None:
+    """Why a method row is capped (a daily node, a D&D), or None for one the player can repeat at will."""
+    from .mechanics import covers
+    from .sim import DAILY_NODES
+
+    name = row.get("activity") or row["method"]
+    for node, (nodes, units) in DAILY_NODES.items():
+        if covers(node.removesuffix(" (tree)"), name):
+            return f"Uncharted Isles: {nodes} x {units} a day on a claimed island"
+    return next((why for act, why in LIMITED_ACTIVITIES.items() if covers(act, name)), None)
+
+
 def typical_rate(row: dict) -> float:
     lo, hi = row.get("xp_per_hour_low"), row.get("xp_per_hour_high")
     if lo is not None and hi is not None:
@@ -217,6 +239,8 @@ class CostModel:
     # "With <boost>" twins of simulated rows (sim.boosted_rows), per skill: kept out of wiki_rows and the rate
     # bands, so plain rates stay unboosted; the material-aware planner weighs them with their consumables.
     boosted: dict[str, list[dict]] = field(default_factory=dict)
+    # Capped activities' rows (limited_activity), out of training: (row, why). For daily planning later.
+    limited: list[tuple[dict, str]] = field(default_factory=list)
 
     @classmethod
     def default(cls, overrides: dict[str, float] | None = None, use_wiki: bool = True,
@@ -242,6 +266,8 @@ class CostModel:
         if use_wiki:
             rows = _load_wiki_rates(members) + [custom_row(m) for m in extra_methods]
             rows, replaced = replaced_by_sims(rows)
+            capped = [(r, why) for r in rows if (why := limited_activity(r))]
+            rows = [r for r in rows if not limited_activity(r)]
             if player is not None:
                 kept = []
                 for r in rows:
@@ -275,13 +301,15 @@ class CostModel:
             source[skill] = "override"
         return cls(rates=rates, quest_length_hours=raw["quest_length_hours"], overridden=set(overrides or {}),
                    rate_source=source, methods=methods, wiki_rows=wiki_rows, baseline=baseline,
-                   excluded=excluded, replaced=replaced, band_basis=band_basis, boosted=boosted)
+                   excluded=excluded, replaced=replaced, band_basis=band_basis, boosted=boosted,
+                   limited=capped if use_wiki else [])
 
     def with_flat_rate(self, skill: str, rate: float) -> "CostModel":
         return CostModel(rates={**self.rates, skill: [(1, rate)]}, quest_length_hours=self.quest_length_hours,
                          overridden=self.overridden, rate_source=self.rate_source, methods=self.methods,
                          wiki_rows=self.wiki_rows, baseline=self.baseline, excluded=self.excluded,
-                         replaced=self.replaced, band_basis=self.band_basis, boosted=self.boosted)
+                         replaced=self.replaced, band_basis=self.band_basis, boosted=self.boosted,
+                         limited=self.limited)
 
     def available_methods(self, skill: str, level: int) -> list[dict]:
         """Usable wiki methods for a skill at a level, fastest first (empty when the rate isn't from the wiki)."""

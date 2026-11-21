@@ -102,7 +102,7 @@ def material_run(row: dict, xp_needed: float, holdings: dict[str, int],
             needs.append((name, need, own + sum(n for _, _, n in borrowed)))
         coverage = min((have / need for _, need, have in needs if need), default=1.0)
         run = MaterialRun(method=row["method"], output=recipe["output"], actions=actions,
-                          produced=actions * v.get("output_qty", 1), rate=typical_rate(row), needs=needs,
+                          produced=round(actions * v.get("output_qty", 1)), rate=typical_rate(row), needs=needs,
                           transfers=transfers, recipient=recipient)
         if best is None or coverage > best[0]:
             best = (coverage, run)

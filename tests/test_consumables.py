@@ -120,3 +120,16 @@ def test_short_boosted_visit_falls_back_to_the_plain_spot():
     g._visit_spots(long, {"Ore": 1100}, {"Test pouch": 0}, {})
     assert any("with Familiar" in s for s in long.steps)
     assert any("using 10 Test pouch" in s for s in long.steps)
+
+
+def test_capped_activities_are_not_training_methods():
+    """A daily node or a D&D (Alaea crablets: 3 x 200 salt a day) is no way to train for hours: kept aside."""
+    from rune_advisor.cost import limited_activity
+
+    assert limited_activity({"method": "Alaea crablet"}).startswith("Uncharted Isles")
+    assert limited_activity({"method": "Golden bamboo"}).startswith("Uncharted Isles")
+    assert limited_activity({"method": "Elder evil trees (Evil Tree distraction)"})
+    assert limited_activity({"method": "Elder trees"}) is None
+    cost = CostModel.default()
+    assert {r["method"] for r, _ in cost.limited} >= {"Alaea crablet", "Golden bamboo"}
+    assert not [r for r in cost.available_methods("Mining", 110) if r["method"] == "Alaea crablet"]
