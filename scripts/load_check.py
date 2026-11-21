@@ -6,8 +6,8 @@
     python scripts/load_check.py --url http://127.0.0.1:8766         # an instance somebody else started (see below)
 
 What it does. Each simulated plugin is one account with a submit and a read token and one character the size
-of a real one (about 25 KB as a full post: every quest/achievement var slot from the packaged game configs, 60
-named vars, 29 skills, a bank of 1,500 items). It posts the full state once, then a delta (one skill, one named
+of a real one (about 25 KB as a full post: every quest/achievement var slot from the packaged game configs, the
+exporter's ~1,500 hand-listed fields, 29 skills, a bank of 1,500 items). It posts the full state once, then a delta (one skill, one named
 var, one bank item) every `--interval` seconds, each on a new connection, as nginx forwards them; every
 `--read-every` seconds its planner reads the snapshot. Starts are spread over one interval. These are real
 wire-protocol messages: the server unpacks, applies and hashes them exactly as it does a plugin's.
@@ -59,7 +59,9 @@ SKILLS = ["ATTACK", "DEFENCE", "STRENGTH", "HITPOINTS", "RANGED", "PRAYER", "MAG
           "FLETCHING", "FISHING", "FIREMAKING", "CRAFTING", "SMITHING", "MINING", "HERBLORE", "AGILITY", "THIEVING",
           "SLAYER", "FARMING", "RUNECRAFTING", "HUNTER", "CONSTRUCTION", "SUMMONING", "DUNGEONEERING", "DIVINATION",
           "INVENTION", "ARCHAEOLOGY", "NECROMANCY"]
-NAMED = ["QP"] + [f"LOADCHECK_VAR_{i}" for i in range(59)]  # the server takes the names from the post
+# The hand-listed fields: the exporter's own manifest (lib/exported_vars.lua), which the server holds too.
+FIELDS = [(n, w) for n, w, _ in wire.parse_exported_vars(
+    (Path(__file__).resolve().parent.parent / "plugins/rune_advisor_export/lib/exported_vars.lua").read_text())]
 INVENTORIES = ["BANK", "INV", "WORN", "MONEY_POUCH", "METAL_BANK", "CURRENCY_POUCH"]
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 RETRY_HOLD_SECONDS = 60.0  # what the plugin waits after a failed post (RETRY_HOLD_TICKS in lib/wire.lua)
@@ -135,7 +137,7 @@ def encode_delta(layout: wire.WireLayout, slots: list[tuple[int, int]], items: l
 
 def make_state(layout: wire.WireLayout, rng: random.Random, bank_items: int) -> wire.WireState:
     slots = [rng.getrandbits(s.width) if s.kind == "base" else rng.randrange(0, 200_000_000) if s.kind == "skill"
-             else rng.randrange(0, 1 << 20) if s.kind == "named" else 1 for s in layout.slots]
+             else rng.getrandbits(s.width) if s.kind == "named" else 1 for s in layout.slots]
     ids = rng.sample(range(1, 60_000), bank_items + 28 + 14)
     invs = {"BANK": {i: rng.randrange(1, 100_000) for i in ids[:bank_items]},
             "INV": {i: rng.randrange(1, 1000) for i in ids[bank_items:bank_items + 28]},
@@ -171,7 +173,7 @@ def plugin(api: Api, layout: wire.WireLayout, index: int, args: argparse.Namespa
         seq += 1
         h = wire.state_hash(layout, state)
         post = {"player": player, "kind": "full", "layout": layout.hash, "base": None, "new": h, "seq": seq,
-                "body": base64.b64encode(wire.canonical(layout, state)).decode(), "named": layout.named,
+                "body": base64.b64encode(wire.canonical(layout, state)).decode(), "manifest": layout.manifest_hash,
                 "skills": layout.skills, "inventories": layout.inventories, "configs": fingerprint, "plugin": "load-check"}
         status, reply, took = api.call("POST", "/v1/state", post, auth=tokens["submit"])
         return results.add("full", status, took, 200, reply)
@@ -195,7 +197,7 @@ def plugin(api: Api, layout: wire.WireLayout, index: int, args: argparse.Namespa
         before = wire.state_hash(layout, state)
         s, n, item = rng.choice(skill_slots), rng.choice(named_slots), rng.choice(bank)
         state.slots[s] = min(200_000_000, state.slots[s] + rng.randrange(1, 5000))
-        state.slots[n] = rng.randrange(0, 1 << 20)
+        state.slots[n] = rng.getrandbits(layout.slots[n].width)
         state.invs["BANK"][item] = rng.randrange(1, 100_000)
         body = encode_delta(layout, [(s, state.slots[s]), (n, state.slots[n])], [(0, item, state.invs["BANK"][item])])
         seq += 1
@@ -328,7 +330,7 @@ def main() -> int:
     if configs is None:
         print("load_check: no packaged game configs to build a layout from")
         return 2
-    layout = wire.WireLayout.build(configs, NAMED, SKILLS, INVENTORIES)
+    layout = wire.WireLayout.build(configs, FIELDS, SKILLS, INVENTORIES)
     size = len(base64.b64encode(wire.canonical(layout, make_state(layout, random.Random(0), args.bank_items))))
     print(f"full_post_body_bytes = {size}")
     print(f"layout_slots = {len(layout.slots)}")

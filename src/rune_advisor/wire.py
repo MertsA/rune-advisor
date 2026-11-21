@@ -3,8 +3,13 @@ would receive them: rebuild the layout from the configs and the full post's dire
 apply deltas, and hand back the final state as var/field values the planner's derivation understands.
 
 Layout (must match lib/manifest.lua bit for bit; both hash their description with FNV-1a 32):
-  base entries (game_configs.base_manifest, name order), named vars (32 bits each, from the post's
-  `named` directory), skills (32 bits each, SkillType order from the post's `skills`), members (1 bit).
+  base entries (game_configs.base_manifest, name order), hand-listed fields (each at its own width, from the
+  directory's `fields`: [name, width] pairs; plugins up to 0.4.3 sent a `named` list, 32 bits each), skills (32
+  bits each, SkillType order from the directory's `skills`), members (1 bit).
+Manifest: the hand-listed fields (plugins/rune_advisor_export/lib/exported_vars.lua: name, width, kind), fixed per
+plugin version. Since 0.5.0 a full post names it by hash (`manifest`, FNV-1a 32 of `manifest_description`); the
+server holds every released manifest in wire_manifests/<hash>.json (scripts/build_exported_vars.py writes them). A
+field the client lacks is sent as 0 and listed in the full post's `absent` (indexes into the manifest).
 Canonical bytes: every slot at its width, LSB-first; then per inventory name (the post's `inventories`
 order): u32 item count (0xFFFFFFFF = never loaded this session: the server keeps what it last knew), then by
 item id: u32 id, u32 count. State hash: FNV-1a seeded with
@@ -16,7 +21,11 @@ known, possibly empty, where the server had "unknown").
 from __future__ import annotations
 
 import base64
+import json
+import re
 from dataclasses import dataclass, field
+from functools import cache
+from pathlib import Path
 import sys
 from array import array
 from typing import Any
@@ -32,28 +41,74 @@ class WireSlot:
     entry: BaseEntry | None = None
 
 
+MANIFEST_DIR = Path(__file__).parent / "wire_manifests"
+FIELD_KINDS = ("var", "bit", "client")
+_ENTRY = re.compile(r'^\s*\{ "([A-Za-z0-9_]+)", (\d+), "(var|bit|client)" \},')
+
+
+def manifest_description(fields: list[tuple[str, int]]) -> str:
+    """What a manifest's hash is the hash of (lib/manifest.lua `describeFields`): "NAME/width,..." in wire order."""
+    return ",".join(f"{n}/{w}" for n, w, *_ in fields)
+
+
+def manifest_hash(fields: list[tuple[str, int]]) -> int:
+    return fnv1a32(manifest_description(fields))
+
+
+def parse_exported_vars(text: str) -> list[tuple[str, int, str]]:
+    """The entries of lib/exported_vars.lua in order: (name, width, kind)."""
+    return [(m.group(1), int(m.group(2)), m.group(3)) for line in text.splitlines() if (m := _ENTRY.match(line))]
+
+
+@cache
+def load_manifest(h: int) -> tuple[tuple[str, int, str], ...] | None:
+    """A released manifest by hash (name, width, kind per field), or None when this server doesn't have it."""
+    path = MANIFEST_DIR / f"{h & 0xFFFFFFFF:08x}.json"
+    if not path.is_file():
+        return None
+    fields = tuple((n, int(w), k) for n, w, k in json.loads(path.read_text())["fields"])
+    return fields if manifest_hash(fields) == h else None
+
+
 @dataclass
 class WireLayout:
     slots: list[WireSlot]
-    named: list[str]
+    fields: list[tuple[str, int]]  # the hand-listed fields: (name, width)
     skills: list[str]
     inventories: list[str]
     manifest: BaseManifest
 
     configs_fingerprint: int | None = None
+    legacy: bool = False  # a 0.4.x layout: a `named` list, every name 32 bits, described as "|named:"
 
     @classmethod
-    def build(cls, configs: GameConfigs, named: list[str], skills: list[str], inventories: list[str]) -> "WireLayout":
+    def build(cls, configs: GameConfigs, fields: list[tuple[str, int]], skills: list[str], inventories: list[str],
+              legacy: bool = False) -> "WireLayout":
         manifest = base_manifest(configs)
         slots = [WireSlot("base", e.base, e.width, e) for e in manifest.entries]
-        slots += [WireSlot("named", n, 32) for n in named]
+        slots += [WireSlot("named", n, w) for n, w in fields]
         slots += [WireSlot("skill", s, 32) for s in skills]
         slots.append(WireSlot("members", "members", 1))
-        return cls(slots, list(named), list(skills), list(inventories), manifest, configs.fingerprint)
+        return cls(slots, [(n, w) for n, w in fields], list(skills), list(inventories), manifest, configs.fingerprint,
+                   legacy)
+
+    @classmethod
+    def build_named(cls, configs: GameConfigs, named: list[str], skills: list[str], inventories: list[str]) -> "WireLayout":
+        """A layout as plugins up to 0.4.3 described it: every hand-listed name 32 bits."""
+        return cls.build(configs, [(n, 32) for n in named], skills, inventories, legacy=True)
+
+    @property
+    def named(self) -> list[str]:
+        return [n for n, _ in self.fields]
+
+    @property
+    def manifest_hash(self) -> int:
+        return manifest_hash(self.fields)
 
     def description(self) -> str:
-        return (self.manifest.description() + "|named:" + ",".join(self.named) + "|skills:" + ",".join(self.skills)
-                + "|members")
+        middle = ("|named:" + ",".join(self.named) if self.legacy
+                  else "|fields:" + ",".join(f"{n}/{w}" for n, w in self.fields))
+        return self.manifest.description() + middle + "|skills:" + ",".join(self.skills) + "|members"
 
     @property
     def hash(self) -> int:
@@ -214,7 +269,8 @@ def base_value(entry: BaseEntry, slot: int) -> int:
 
 
 def values(layout: WireLayout, state: WireState) -> tuple[dict[str, int], dict[str, int], dict[str, int], bool]:
-    """(field values for game_configs.derive, named var values, skill xp by SkillType name, members)."""
+    """(field values for game_configs.derive, named var values, skill xp by SkillType name, members). Named values
+    are as sent: unsigned, each within its width."""
     bases = {}
     named, skills, members = {}, {}, False
     for slot, value in zip(layout.slots, state.slots):
@@ -268,9 +324,16 @@ def replay(entries: dict[str, Any], configs: GameConfigs, player: str) -> Replay
         verdict = "accepted"
         try:
             if kind == "full":
-                layout = WireLayout.build(configs, header.get("named") or [], header.get("skills") or [],
-                                          header.get("inventories") or [])
-                if layout.hash != header.get("layout"):
+                if "named" in header:  # plugins up to 0.4.3: the lists in every full post
+                    layout = WireLayout.build_named(configs, header.get("named") or [], header.get("skills") or [],
+                                                    header.get("inventories") or [])
+                else:
+                    fields = load_manifest(header.get("manifest")) if isinstance(header.get("manifest"), int) else None
+                    layout = (WireLayout.build(configs, [(n, w) for n, w, _ in fields], header.get("skills") or [],
+                                               header.get("inventories") or []) if fields else None)
+                if layout is None:
+                    verdict = "rejected: manifest unknown"
+                elif layout.hash != header.get("layout"):
                     verdict = f"rejected: layout hash {layout.hash:#010x} != plugin's {header.get('layout'):#010x}"
                 else:
                     state = unpack_full(layout, body)

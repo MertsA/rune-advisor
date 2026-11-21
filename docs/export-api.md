@@ -51,7 +51,7 @@ routes, small JSON bodies, one process behind nginx.
 
 | Route | Auth | Purpose |
 |---|---|---|
-| `POST /v1/state` | `submit` token | the plugin's post: JSON `{player, kind: full\|delta, layout, base, new, seq, body: base64, named/inventories/skills on a full post}` |
+| `POST /v1/state` | `submit` token | the plugin's post: JSON `{player, kind: full\|delta, layout, base, new, seq, body: base64}`; a full post adds `manifest` (a hash), `absent` (when some), `skills`, `inventories`, `configs`, `plugin` (plugins up to 0.4.3: `named` instead of `manifest`/`absent`) |
 | `POST /v1/configs` | `submit` token | a part of the config difference (Config sync below); the result is private to the account until confirmed |
 | `GET /v1/players` | `submit` or `read` token | characters this token may see (a limited read token sees its own); the plugin uses it to check a pasted token |
 | `GET /v1/snapshot` + `X-Player` | `read` token | the schema-2 snapshot the planner reads (quests, achievement tests, skills, vars, item log, inventories with names) |
@@ -177,7 +177,7 @@ may also be stripped by nginx.
 ## Design rule: the server never chooses what player data the plugin sends
 
 Everything a reviewer needs to know about what leaves the client must be readable in the shipped plugin:
-the named var list in `main.lua`, the inventory allow-list, the layout derivation from the game's own quest
+the named var list in `lib/exported_vars.lua`, the inventory allow-list, the layout derivation from the game's own quest
 and achievement definitions, and `configdump.lua`'s entry shapes. The server may say *when* and *whether*
 the plugin posts (`interval`, `retry_after`, a revoked token) and may name static game configs it lacks
 (the 428 handshake), but it never gets to pick player vars, inventories or anything else to collect. A
@@ -227,6 +227,21 @@ guards are settings in the same file (see Accounts).
 - At login the plugin seeds inventories it hasn't loaded yet from the last acknowledged state, so the first
   delta of a session doesn't report the bank emptied.
 - Inventories a full post marks unknown stay as the server last saw them (`known_invs` in the record).
+- Hand-listed fields (plugin 0.5.0): `lib/exported_vars.lua` is a static manifest, every variable written out
+  as `{ name, width, kind }` in wire order. Each travels at its width: a VarBit as wide as its mask (an item log
+  count is 8 or 16 bits), a whole variable or a client variable 32 bits, never capped; about 17,600 bits for
+  ~1,545 fields, where 0.4.x spent 32 bits a name. `scripts/build_exported_vars.py` fills in widths, kinds and
+  the generated family blocks (every variable with a prefix, at build time) from the dev plugin's var dump, and
+  writes the server's copy, `src/rune_advisor/wire_manifests/<hash>.json` (FNV-1a 32 of `NAME/width,...`); every
+  released manifest stays there, so any stored state or history entry can be read. A full post names its
+  manifest by hash and the server refuses one it lacks (400: the plugin is newer than the server; deploy the
+  server first). The layout's description says `|fields:NAME/width,...` (0.4.x: `|named:NAME,...`), so the two
+  can't be mistaken for each other. Only 32-bit fields are read back as signed.
+- An entry the client lacks (the name is gone, or it is no longer a VarBit of that width after a game update)
+  keeps its slot, sent as 0, and the full post lists it in `absent` (indexes into the manifest; only on full
+  posts, since the set is worked out at login). The record keeps the list and the snapshot leaves those vars
+  out. The next plugin version corrects the entry. So the layout depends only on the plugin version and the
+  game configs: the server never sees a field list it doesn't already hold.
 - Item names: the wire carries ids; `data/item_names.json` (from the player's own exports,
   `scripts/build_item_names.py`) names them in snapshots. Unknown ids show as `Unknown item <id>` with a note.
 - Skill levels in snapshots are xp-derived and capped at the skill's maximum, as `GetLevelUncapped` reports.

@@ -13,11 +13,17 @@
 --                  order. Each is cut from the variable's 32-bit value as `ranges` ({start, stop, size}:
 --                  bits start..stop, sent as `size` bits; when size is smaller than the span the value is
 --                  capped at the largest number `size` bits hold) followed by single tested `bits`.
---   named vars     the hand-listed variables (lib/exported_vars.lua: currencies, storages, item log...), 32 bits each, by name
+--   fields         the hand-listed variables (lib/exported_vars.lua: currencies, storages, item log...), in that
+--                  file's order, each at the width it gives: a VarBit as wide as its field (an item log count is
+--                  8 or 16 bits), a whole player variable or a client variable 32 bits. Never capped. Fixed per
+--                  plugin version (the "manifest"): an entry this client lacks keeps its slot, sent as 0.
 --   skills         xp per skill, 32 bits each, in SkillType order
 --   members        1 bit
 -- Building it walks every quest and achievement, so it runs as jobs, a slice per tick (lib/jobs.lua): one
 -- callback may not run longer than 1000 ms, and a long one would freeze the game for as long as it ran.
+-- The server holds the same manifest (src/rune_advisor/wire_manifests/), so a full post names it by its hash
+-- (`manifestHash`) and lists the entries this client lacks (`absent`); the server never has to be told which
+-- variables a post holds. Only the quest and achievement part changes with game updates.
 -- The same walk hashes each definition (deps.configHash(kind, cfg) -> id, hash; lib/canon.lua) and the whole
 -- set (layout.configHashes, layout.fingerprint): the full post tells the server which set of definitions the
 -- layout was derived from, and the server asks for the ones it lacks (lib/configsync.lua).
@@ -202,7 +208,14 @@ local function baseEntries(needs)
 end
 
 --- The layout written out as text, which the layout hash is taken over (the server writes the same text).
-local function describe(slots, named, skillNames)
+--- The manifest's description, which `manifestHash` is the hash of: "NAME/width" per field, in order.
+local function describeFields(fields)
+    local fs = {}
+    for _, s in ipairs(fields) do fs[#fs + 1] = s.name .. "/" .. tostring(s.width) end
+    return table.concat(fs, ",")
+end
+
+local function describe(slots, fields, skillNames)
     local parts = {}
     for _, s in ipairs(slots) do
         if s.kind == "base" then
@@ -212,7 +225,7 @@ local function describe(slots, named, skillNames)
             parts[#parts + 1] = s.name .. ":" .. table.concat(rs, ",") .. ":" .. table.concat(bs, ",")
         end
     end
-    return table.concat(parts, ";") .. "|named:" .. table.concat(named, ",") .. "|skills:" .. table.concat(skillNames, ",") .. "|members"
+    return table.concat(parts, ";") .. "|fields:" .. describeFields(fields) .. "|skills:" .. table.concat(skillNames, ",") .. "|members"
 end
 
 --- Pack a base entry's slot value from its variable's 32-bit value `u`: each range's bits (capped when the
@@ -234,12 +247,12 @@ function M.packBase(slot, u)
     return acc
 end
 
---- Build the layout as jobs. deps: configs, jobs, bits, named (sorted list of hand-listed var names),
---- namedBase (name -> base var name, for those that are fields of another variable), clientOnly (set of
---- names the client only has as a client variable), skillNames, configHash, fingerprint.
+--- Build the layout as jobs. deps: configs, jobs, bits, fields (the manifest's entries resolved against this
+--- client, main.lua: { name, width, kind, start, base, absent } in order), skillNames, configHash, fingerprint.
 --- onDone(layout): { slots, offset (bit offset of each slot), totalBits, description, hash,
 ---   byBase (base var name -> indexes of the slots cut from it, so a change event finds them),
----   skillSlot (skill name -> slot index), membersSlot, configHashes, fingerprint }.
+---   skillSlot (skill name -> slot index), membersSlot, configHashes, fingerprint,
+---   manifestHash, absent (0-based indexes into the manifest of the entries this client lacks) }.
 function M.build(deps, onDone)
     local needs = {}
     local hashes = { quests = {}, achievements = {} }
@@ -279,12 +292,18 @@ function M.build(deps, onDone)
                 byBase[s.name] = byBase[s.name] or {}
                 table.insert(byBase[s.name], i)
             end
-            for _, name in ipairs(deps.named) do
-                slots[#slots + 1] = { kind = "named", name = name, width = 32,
-                                      clientOnly = deps.clientOnly and deps.clientOnly[name] or nil }
-                local base = deps.namedBase[name] or name
-                byBase[base] = byBase[base] or {}
-                table.insert(byBase[base], #slots)
+            local fields, absent = {}, {}
+            for i, f in ipairs(deps.fields) do
+                local slot = { kind = "named", name = f.name, width = f.width, start = f.start,
+                               clientOnly = f.kind == "client" or nil, absent = f.absent or nil }
+                slots[#slots + 1] = slot
+                fields[#fields + 1] = slot
+                if f.absent then
+                    absent[#absent + 1] = i - 1
+                else
+                    byBase[f.base] = byBase[f.base] or {}
+                    table.insert(byBase[f.base], #slots)
+                end
             end
             local skillSlot = {}
             for _, name in ipairs(deps.skillNames) do
@@ -294,10 +313,11 @@ function M.build(deps, onDone)
             slots[#slots + 1] = { kind = "members", name = "members", width = 1 }
             local offset, total = {}, 0
             for i, s in ipairs(slots) do offset[i] = total total = total + s.width end
-            local description = describe(slots, deps.named, deps.skillNames)
+            local description = describe(slots, fields, deps.skillNames)
             onDone({ slots = slots, byBase = byBase, skillSlot = skillSlot, membersSlot = #slots,
                      totalBits = total, offset = offset, description = description,
-                     hash = deps.bits.fnv1a32(description),
+                     hash = deps.bits.fnv1a32(description), absent = absent,
+                     manifestHash = deps.bits.fnv1a32(describeFields(fields)),
                      configHashes = hashes, fingerprint = deps.fingerprint and deps.fingerprint(hashes) or nil })
         end,
     })

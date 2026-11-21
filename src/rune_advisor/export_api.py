@@ -144,6 +144,12 @@ MAX_PENDING_PER_ACCOUNT = 2  # a new upload beyond this replaces the account's o
 MAX_STAGED_PER_ACCOUNT = 3  # unfinished (multi-part) uploads held in memory per account
 MAX_STAGED_ENTRIES = 20000  # config entries one unfinished upload may hold
 STAGING_SECONDS = 300.0  # an unfinished upload is forgotten after this long
+# A full post's own lists: bounds on what it may name, and how many built layouts are kept in memory (they are
+# rebuilt when needed again). The hand-listed fields are not among them: the post names a manifest by hash.
+MAX_FIELDS = 4096  # names in a 0.4.x post's `named` list
+MAX_LIST_NAMES = 255  # skills, and inventories (a delta names an inventory in one byte)
+LIST_NAME = re.compile(r"[A-Za-z0-9_]{1,100}")
+LAYOUT_CACHE = 64
 
 
 class ApiError(Exception):
@@ -1178,7 +1184,7 @@ class Service:
         self.captcha, self.limiter = captcha or Captcha(), RateLimiter()  # no captcha given: no check (tests, self-hosting)
         self.load, self.token_limiter = Load(), RateLimiter()
         self.item_names = item_names or ItemNames.load()
-        self._layouts: dict[tuple, wire.WireLayout] = {}
+        self._layouts: dict[tuple, wire.WireLayout] = {}  # most recently used last; at most LAYOUT_CACHE
         # Global config sets by fingerprint -> (configs, time learned): the package dump (time 0) and the confirmed
         # generations, re-read when `configs confirm` runs (any process). Pending sets live in the store, per account.
         self._global: dict[int, tuple[GameConfigs, float]] = {configs.fingerprint: (configs, 0.0)}
@@ -1283,16 +1289,62 @@ class Service:
         with self.store.lock:
             return sorted(self._globals()), sorted({p["fp"] for p in self.store.pending_of(owner)})
 
-    def layout(self, named: list[str], skills: list[str], inventories: list[str], fp: int | None = None,
-               owner: str | None = None) -> wire.WireLayout:
+    def layout(self, fields: list[tuple[str, int]], skills: list[str], inventories: list[str], fp: int | None = None,
+               owner: str | None = None, legacy: bool = False) -> wire.WireLayout:
+        """The layout for these configs and these lists. `legacy`: a 0.4.x post's `named` list (32 bits each)."""
         found = (self.configs, f"g{self.baseline:08x}") if fp is None else self.lookup(fp, owner)
         if found is None:
             raise ApiError(428, f"configs {fp:#010x} unknown", extra=self._need_configs(owner))
         configs, ident = found
-        key = (ident, tuple(named), tuple(skills), tuple(inventories))
-        if key not in self._layouts:
-            self._layouts[key] = wire.WireLayout.build(configs, list(named), list(skills), list(inventories))
-        return self._layouts[key]
+        key = (ident, legacy, tuple(fields), tuple(skills), tuple(inventories))
+        layout = self._layouts.pop(key, None)
+        if layout is None:
+            layout = wire.WireLayout.build(configs, list(fields), list(skills), list(inventories), legacy=legacy)
+            while len(self._layouts) >= LAYOUT_CACHE:
+                del self._layouts[next(iter(self._layouts))]  # the least recently used
+        self._layouts[key] = layout
+        return layout
+
+    def _record_layout(self, owner: str, rec: dict[str, Any]) -> wire.WireLayout:
+        """The layout a stored record was posted under: a 0.4.x record carries its `named` list, a later one names
+        its manifest (wire_manifests/, kept for every released version)."""
+        lay = rec["layout"]
+        if "named" in lay:
+            return self.layout([(n, 32) for n in lay["named"]], lay["skills"], lay["inventories"], rec.get("configs"),
+                               owner, legacy=True)
+        fields = wire.load_manifest(lay["manifest"])
+        if fields is None:
+            raise ApiError(409, f"the stored state's manifest {lay['manifest']:#010x} is not on this server")
+        return self.layout([(n, w) for n, w, _ in fields], lay["skills"], lay["inventories"], rec.get("configs"), owner)
+
+    @staticmethod
+    def _post_lists(post: dict[str, Any]) -> tuple[list[tuple[str, int]], list[str], list[str], bool, list[int]]:
+        """(fields, skills, inventories, legacy, absent) a full post's layout is built from. Since plugin 0.5.0 the
+        post names its manifest by hash and lists the fields its client lacks (`absent`, indexes into it); a 0.4.x
+        post sends its `named` list, every name 32 bits. A manifest this server doesn't have means a plugin newer
+        than the server: refused (the plugin retries in a minute; the server is deployed before a plugin release)."""
+        def names(key: str, limit: int) -> list[str]:
+            value = post.get(key)
+            if not isinstance(value, list) or len(value) > limit or not all(
+                    isinstance(x, str) and LIST_NAME.fullmatch(x) for x in value):
+                raise ApiError(400, f"a full post's {key} list is malformed")
+            if len(set(value)) != len(value):
+                raise ApiError(400, f"a name appears twice in {key}")
+            return value
+        skills, inventories = names("skills", MAX_LIST_NAMES), names("inventories", MAX_LIST_NAMES)
+        if "named" in post:
+            return [(n, 32) for n in names("named", MAX_FIELDS)], skills, inventories, True, []
+        h = post.get("manifest")
+        if not isinstance(h, int):
+            raise ApiError(400, "a full post needs its manifest hash")
+        fields = wire.load_manifest(h)
+        if fields is None:
+            raise ApiError(400, f"manifest {h:#010x} unknown: the plugin is newer than this server")
+        absent = post.get("absent", [])
+        if not isinstance(absent, list) or not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(fields)
+                                                   for i in absent) or len(set(absent)) != len(absent):
+            raise ApiError(400, "absent must be distinct indexes into the manifest")
+        return [(n, w) for n, w, _ in fields], skills, inventories, False, sorted(absent)
 
     def _need_configs(self, owner: str | None = None) -> dict[str, Any]:
         """The 428 body: the hashes of the base the plugin should diff against. That is the newest global set (by
@@ -1372,12 +1424,15 @@ class Service:
         return wire.unpack_full(layout, base64.b64decode(rec["state"]))
 
     def _record(self, player: str, layout: wire.WireLayout, canon: bytes, h: int, header: dict,
-                known: dict[str, dict[int, int]], posts: int, plugin: str | None = None) -> dict[str, Any]:
+                known: dict[str, dict[int, int]], posts: int, plugin: str | None = None,
+                absent: list[int] | None = None) -> dict[str, Any]:
         """The stored record; `canon` is the state's canonical bytes (packed once per post, hashed and stored)."""
         return {
             "player": player, "schema": SCHEMA_VERSION, "plugin": header.get("plugin") or plugin,
             "configs": layout.configs_fingerprint,
-            "layout": {"hash": layout.hash, "named": layout.named, "skills": layout.skills, "inventories": layout.inventories},
+            "layout": ({"hash": layout.hash, "named": layout.named, "skills": layout.skills, "inventories": layout.inventories}
+                       if layout.legacy else {"hash": layout.hash, "manifest": layout.manifest_hash, "skills": layout.skills,
+                                              "inventories": layout.inventories, "absent": absent}),
             "state": base64.b64encode(canon).decode("ascii"),
             "hash": h, "seq": header.get("seq"), "posts": posts, "updated": time.time(),
             "known_invs": {name: {str(i): c for i, c in items.items()} for name, items in known.items()},
@@ -1405,13 +1460,11 @@ class Service:
             rec = self.store.load_state(owner, player)
             posts = (rec.get("posts") or 0) + 1 if rec else 1
             if kind == "full":
-                for key in ("named", "inventories", "skills"):
-                    if not isinstance(post.get(key), list) or not all(isinstance(x, str) for x in post[key]):
-                        raise ApiError(400, f"a full post needs the {key} directory")
                 fp = post.get("configs")
                 if fp is not None and not isinstance(fp, int):
                     raise ApiError(400, "configs must be the fingerprint")
-                layout = self.layout(post["named"], post["skills"], post["inventories"], fp, owner)
+                fields, skills, inventories, legacy, absent = self._post_lists(post)
+                layout = self.layout(fields, skills, inventories, fp, owner, legacy=legacy)
                 if layout.hash != post["layout"]:
                     raise ApiError(409, f"layout hash {layout.hash:#010x} differs from the plugin's {post['layout']:#010x}: "
                                         "the server's game configs don't match the client's")
@@ -1427,7 +1480,8 @@ class Service:
                 known.update({k: dict(v) for k, v in state.invs.items()})
                 if rec is None:
                     self.check_character_room(owner)
-                self.store.save_state(owner, player, self._record(player, layout, canon, h, post, known, posts))
+                self.store.save_state(owner, player, self._record(player, layout, canon, h, post, known, posts,
+                                                                   absent=absent))
                 return self._accepted(kind, h, post)
             # delta
             if rec is None:
@@ -1436,7 +1490,7 @@ class Service:
                 raise ApiError(409, "layout changed")
             if post.get("base") != rec["hash"]:
                 raise ApiError(409, f"base hash {post.get('base')} is not the server's state {rec['hash']}")
-            layout = self.layout(rec["layout"]["named"], rec["layout"]["skills"], rec["layout"]["inventories"], rec.get("configs"), owner)
+            layout = self._record_layout(owner, rec)
             state = self._unpack_record(layout, rec)
             try:
                 wire.apply_delta(layout, state, body)
@@ -1449,7 +1503,7 @@ class Service:
             known = {k: {int(i): c for i, c in v.items()} for k, v in rec.get("known_invs", {}).items()}
             known.update({k: dict(v) for k, v in state.invs.items()})
             self.store.save_state(owner, player, self._record(player, layout, canon, h, post, known, posts,
-                                                               plugin=rec.get("plugin")))
+                                                               plugin=rec.get("plugin"), absent=rec["layout"].get("absent")))
             return self._accepted(kind, h, post)
 
     def interval(self) -> float:
@@ -1477,7 +1531,7 @@ class Service:
         rec = self.store.load_state(owner, player)
         if rec is None:
             return None
-        layout = self.layout(rec["layout"]["named"], rec["layout"]["skills"], rec["layout"]["inventories"], rec.get("configs"), owner)
+        layout = self._record_layout(owner, rec)
         state = self._unpack_record(layout, rec)
         known = {k: {int(i): c for i, c in v.items()} for k, v in rec.get("known_invs", {}).items()}
         self.item_names = self.item_names.fresh()
@@ -1485,6 +1539,8 @@ class Service:
                                    player=rec.get("player", player), exported_at=rec.get("updated"), today=today)
         snap["configs"] = layout.configs_fingerprint
         snap["plugin"] = rec.get("plugin")
+        for i in rec["layout"].get("absent") or []:  # fields the client lacked: sent as 0, not a value
+            snap["vars"].pop(layout.fields[i][0], None)
         return snap
 
 
@@ -1496,9 +1552,11 @@ def snapshot_from_state(configs: GameConfigs, layout: wire.WireLayout, state: wi
                         known_invs: dict[str, dict[int, int]], item_names: ItemNames, player: str,
                         exported_at: float | None = None, today: date | None = None) -> dict[str, Any]:
     fields, named, skills_xp, members = wire.values(layout, state)
-    # Named vars travel as unsigned 32-bit slots; the client's values are signed (the statue bag mirrors read
-    # -1 until the bag is opened, and the planner tests for exactly that).
-    named = {k: _signed32(v) for k, v in named.items()}
+    # Named vars travel unsigned; a whole 32-bit variable's value is signed on the client (the statue bag
+    # mirrors read -1 until the bag is opened, and the planner tests for exactly that). A narrower field is a
+    # VarBit, which is never negative.
+    width = dict(layout.fields)
+    named = {k: _signed32(v) if width.get(k, 32) == 32 else v for k, v in named.items()}
     # Levels as Player.GetLevelUncapped reports them: from the xp, capped at the skill's own maximum (99 for
     # Fishing, 120 for Archaeology), not virtual levels.
     skills = {}

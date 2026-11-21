@@ -55,7 +55,7 @@ local configsync = require("lib/configsync")
 
 -- Sent with every full post, so the server knows which protocol it is talking to (the API exposes no
 -- game or plugin version, so this is kept by hand; bump it with plugin.json: a test checks they match).
-local PLUGIN_VERSION = "0.4.3"
+local PLUGIN_VERSION = "0.5.0"
 
 -- PersistentDB rejects large strings, so big values (the acknowledged wire state) are split into numbered
 -- chunks: "<key>#1", "<key>#2", ... plus a header stored at "<key>" itself: {"chunks": N}.
@@ -127,28 +127,8 @@ local SKILL_NAMES = {
     "NECROMANCY",
 }
 
--- The player variables posted by name are listed in lib/exported_vars.lua: names written out, plus a few
--- prefix families whose every member is the same kind of value (ore box counts, collection log items...).
+-- The player variables posted by name: lib/exported_vars.lua, every one written out with its width.
 local exported = require("lib/exported_vars")
-local EXPORTED_VARS = exported.NAMES
-local EXPORTED_VAR_PREFIXES = exported.PREFIXES
-local prefixedVars = nil  -- the names under those prefixes this client has: found once, at the first login
-
--- The prefixes by their first word ("MINING_OREBOX_" under "MINING"): the client has some 62,000 player
--- vars, and looking a name's first word up here rules nearly all of them out without trying every prefix.
-local PREFIXES_BY_FIRST_WORD = {}
-for _, prefix in ipairs(EXPORTED_VAR_PREFIXES) do
-    local word = prefix:match("^[^_]+")
-    PREFIXES_BY_FIRST_WORD[word] = PREFIXES_BY_FIRST_WORD[word] or {}
-    table.insert(PREFIXES_BY_FIRST_WORD[word], prefix)
-end
-
-local function hasExportedPrefix(name)
-    for _, prefix in ipairs(PREFIXES_BY_FIRST_WORD[name:match("^[^_]+")] or {}) do
-        if name:sub(1, #prefix) == prefix then return true end
-    end
-    return false
-end
 
 -- A player var, else a client var of that name: the client keeps copies of some item vars there
 -- (STATUE_BAG_CLIENT holds the statue collection bag's obj var), and the API can't read obj vars directly.
@@ -162,61 +142,51 @@ local function readVar(name)
     return nil
 end
 
--- The var names under the prefixes above, found once in the client's var configs and
--- kept for the rest of the session. The client's player vars are listed in one pass; matching their names
--- takes a tenth of a second or more, so that runs as a job, a slice per tick (lib/jobs.lua), and hands the
--- list to onDone.
-local VARS_PER_SLICE = 2000
-local function findPrefixedVars(onDone)
-    if prefixedVars ~= nil then return onDone(prefixedVars) end
-    local found = {}
-    jobs.add({
-        name = "exported var names", items = configs.all(var.VarPlayer), perTick = VARS_PER_SLICE,
-        each = function(cfg)
-            local name = cfg.configName
-            if hasExportedPrefix(name) then found[#found + 1] = name end
-        end,
-        done = function()
-            prefixedVars = found
-            onDone(found)
-        end,
-    })
-end
-
 -- The player's own item storage (lib/inventories.lua): the only inventories ever sent.
 local inventories = require("lib/inventories")
 local EXPORTED_INVENTORIES = inventories.EXPORTED
 
--- The named-var section of the wire layout: the var list above, resolved against the client's var configs
--- at login. Names the client only has as a VarClient (the statue bag mirrors, copies of item obj vars) are
--- included too and marked client-only: no VarTransmit announces their changes, so the wire re-reads them
--- before every post. Names this client knows under neither are left out of the layout.
--- onDone(names sorted, name -> base var name for VarBits, set of client-only names).
-local function namedVarNames(onDone)
-    local names, bases, clientOnly = {}, {}, {}
-    local seen = {}
-    local function add(name)
-        if seen[name] then return end
-        seen[name] = true
-        local ok, base = pcall(function()
-            local v = var.VarPlayer[name]
-            if v == nil then return false end
-            return v.isVarBit and v.baseVar and v.baseVar.configName or true
-        end)
-        if not ok or base == false then
-            local okC, isClient = pcall(function() return var.VarClient[name] ~= nil end)
-            if not okC or not isClient then return end
-            clientOnly[name] = true
-        end
-        names[#names + 1] = name
-        if type(base) == "string" then bases[name] = base end
-    end
-    findPrefixedVars(function(prefixed)
-        for _, name in ipairs(EXPORTED_VARS) do add(name) end
-        for _, name in ipairs(prefixed) do add(name) end
-        table.sort(names)
-        onDone(names, bases, clientOnly)
-    end)
+-- The named-var section of the wire layout: lib/exported_vars.lua's entries, in its order, checked against
+-- this client's variables at login. An entry this client doesn't have as listed (the name is gone, or it is no
+-- longer a VarBit of that width after a game update) stays in the layout, so the layout never depends on the
+-- client, but is sent as 0 and reported absent. A VarBit's place in its base var comes from its mask: a change
+-- event names the base var, and the field is cut from its new value. Client variables announce no changes,
+-- so the wire re-reads them before every post.
+-- onDone(fields): { name, width, kind, start (VarBits), base (the variable a change event names), absent }
+-- per entry, in the manifest's order. As a job, a slice per tick: there are ~1,500 entries.
+local FIELDS_PER_SLICE = 500
+local function resolveFields(onDone)
+    local out = {}
+    jobs.add({
+        name = "exported vars", items = exported.FIELDS, perTick = FIELDS_PER_SLICE,
+        each = function(entry)
+            local name, width, kind = entry[1], entry[2], entry[3]
+            local f = { name = name, width = width, kind = kind, base = name, absent = true }
+            if kind == "client" then
+                local ok, present = pcall(function() return var.VarClient[name] ~= nil end)
+                f.absent = not (ok and present)
+            else
+                local ok, isBit, base, mask = pcall(function()
+                    local v = var.VarPlayer[name]
+                    if v == nil then return nil end
+                    if v.isVarBit then return true, v.baseVar and v.baseVar.configName, v.varBitMask end
+                    return false
+                end)
+                if ok and isBit == false and kind == "var" then
+                    f.absent = false
+                elseif ok and isBit == true and kind == "bit" and type(base) == "string"
+                        and type(mask) == "number" and mask > 0 then
+                    local start, w = 0, 0
+                    while (mask >> start) & 1 == 0 do start = start + 1 end
+                    local rest = mask >> start
+                    while rest > 0 do rest, w = rest >> 1, w + 1 end
+                    if w == width then f.absent, f.start, f.base = false, start, base end
+                end
+            end
+            out[#out + 1] = f
+        end,
+        done = function() onDone(out) end,
+    })
 end
 
 -- An inventory as a set: item id -> count, placeholders (count 0) and empty slots left out.
@@ -308,7 +278,7 @@ end
 Event.Logic.Subscribe("runeadvisor-jobs", jobs.tick)
 local wireHandle = wire.start({
     json = json, saveJson = saveJson, loadJson = loadJson, bits = bits, jobs = jobs, configs = configs, manifest = manifest,
-    playerName = playerName, skillNames = SKILL_NAMES, namedVars = namedVarNames,
+    playerName = playerName, skillNames = SKILL_NAMES, namedVars = resolveFields,
     inventoryNames = WIRE_INVENTORIES, readInventory = readInventorySet, readVar = readVar,
     transport = { post = api.postState }, ready = apiReady, loadInterval = settings.interval, saveInterval = settings.setInterval,
     configHash = configHash, fingerprint = canon.fingerprint, syncConfigs = syncConfigs,

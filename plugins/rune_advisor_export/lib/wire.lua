@@ -6,7 +6,7 @@
 --
 -- State:
 --   slots[i]      the packed value of layout slot i (lib/manifest.lua: the tested bits of a player variable,
---                 a hand-listed variable, a skill's xp, or the membership bit)
+--                 a hand-listed variable at its own width, a skill's xp, or the membership bit)
 --   invs[name]    { [itemId] = count } for each of the player's own inventories (lib/inventories.lua). A set:
 --                 slot order never matters, placeholders and empty slots are left out.
 -- Canonical bytes (hashed, and the body of a full post): every slot at its width, least significant bit
@@ -20,17 +20,19 @@
 -- 0} ("now known") before its items, so an empty one still turns from unknown into an empty set on the
 -- server (the hashes would differ otherwise).
 -- Every post carries a JSON header beside the body: kind ("full"/"delta"), layout (the layout's hash), base
--- (the state hash the delta applies to), new (the hash after), seq, and on a full post the lists of
--- hand-listed variable names, inventory names and skill names (so the server can tell the slots apart),
--- `configs` (the fingerprint of the quest/achievement configs the layout was derived from) and `plugin`
--- (this plugin's version). The two hashes let the server refuse a delta that does not fit the state it
--- holds; the plugin then sends the full state again.
+-- (the state hash the delta applies to), new (the hash after), seq, and on a full post `manifest` (the hash
+-- of lib/exported_vars.lua's list, which the server holds too), `absent` (the entries of that list this client
+-- lacks, sent as 0; left out when there are none), the skill and inventory names, `configs` (the fingerprint
+-- of the quest/achievement configs the layout was derived from) and `plugin` (this plugin's version). The two
+-- hashes let the server refuse a delta that does not fit the state it holds; the plugin then sends the full
+-- state again.
 -- A server that doesn't know the fingerprint (a game update it has not seen) asks for the configs it lacks:
 -- deps.syncConfigs sends them (lib/configsync.lua), then the full state is posted again.
 --
 -- Changes are picked up from the client's own events, not by polling (the one exception: client-only
 -- variables, which announce nothing, are re-read just before each post): VarTransmit names the variable that
--- changed, and the slots cut from it are repacked from the event's new value; SkillTransmit updates the
+-- changed, and the slots cut from it are repacked from the event's new value (a hand-listed VarBit is cut
+-- from it too: its bits of the base var's value); SkillTransmit updates the
 -- skill's slot; InventoryAdded/Updated re-reads that one inventory. The baseline at login reads everything
 -- once, a slice per tick (lib/jobs.lua). A delta is the current state minus the last accepted state, worked
 -- out when the post is made, never a list of events. One post is in flight at a time.
@@ -200,7 +202,7 @@ end
 ---   saveJson(key, text)                      store a string on this computer (PersistentDB), in chunks
 ---   playerName() -> string or nil            the logged-in character's display name
 ---   skillNames                               the skills, in SkillType order
----   namedVars(onDone(names, bases, clientOnly))  the hand-listed variables this client has (main.lua)
+---   namedVars(onDone(fields))              lib/exported_vars.lua's entries resolved against this client (main.lua)
 ---   inventoryNames                           the sorted allow-list of own inventories
 ---   readInventory(name) -> set or nil        one own inventory as { [itemId] = count }
 ---   readVar(name) -> number or nil           one player variable's value
@@ -215,7 +217,6 @@ function M.start(deps)
     local S = {
         player = nil,        -- the character this state belongs to (set at login)
         layout = nil,        -- the wire layout built at login (lib/manifest.lua)
-        named = {},          -- the hand-listed variable names in the layout, sent with a full post
         slots = {},          -- current packed slot values
         invs = {},           -- current inventory sets, by name; absent = not loaded by the client yet
         acked = nil,         -- the last state the server accepted: { slots, invs, hash }; nil = send the full state next
@@ -254,6 +255,13 @@ function M.start(deps)
     -- (the statue collection bag's contents). Until the client has loaded it this session (for the bag:
     -- until the bag is opened) it reads -1, which means "not known yet", not a value. So -1 never replaces
     -- what is already held: the slot keeps the last value read, or the one the server last accepted.
+    -- A hand-listed value as its slot holds it: the low `width` bits (a VarBit's field is never wider; a
+    -- whole variable is 32 bits).
+    local function fieldValue(slot, value)
+        value = type(value) == "number" and math.tointeger(value) or 0
+        return value & ((1 << slot.width) - 1)
+    end
+
     local function readClientOnly(i, slot)
         local value = deps.readVar(slot.name)
         if type(value) == "number" and value ~= -1 then S.slots[i] = value & 0xFFFFFFFF end
@@ -318,7 +326,7 @@ function M.start(deps)
         notReadySaid = false
         -- Client-only variables announce no changes: read them fresh before posting.
         for i, slot in ipairs(S.layout.slots) do
-            if slot.clientOnly then readClientOnly(i, slot) end
+            if slot.clientOnly and not slot.absent then readClientOnly(i, slot) end
         end
         -- A delta with nothing in it is not posted, so look for changes before packing and hashing anything.
         local changedSlots, changedItems
@@ -335,7 +343,8 @@ function M.start(deps)
         local body
         if kind == "full" then
             body = stateBytes
-            header.named = S.named
+            header.manifest = S.layout.manifestHash
+            if #S.layout.absent > 0 then header.absent = S.layout.absent end
             header.inventories = deps.inventoryNames
             header.skills = deps.skillNames
             header.configs = S.layout.fingerprint
@@ -361,7 +370,7 @@ function M.start(deps)
     local function baseline()
         local reads = {}
         for i, slot in ipairs(S.layout.slots) do
-            if slot.kind == "base" or slot.kind == "named" then reads[#reads + 1] = i end
+            if slot.kind == "base" or (slot.kind == "named" and not slot.absent) then reads[#reads + 1] = i end
         end
         deps.jobs.add({
             name = "wire: baseline", items = reads, perTick = BASELINE_VARS_PER_SLICE,
@@ -373,7 +382,7 @@ function M.start(deps)
                 elseif slot.clientOnly then
                     readClientOnly(i, slot)  -- left unset while unknown; settled below, once the accepted state is loaded
                 else
-                    S.slots[i] = (value or 0) & 0xFFFFFFFF
+                    S.slots[i] = fieldValue(slot, value)
                 end
             end,
             done = function()
@@ -412,6 +421,7 @@ function M.start(deps)
                 end
                 -- Client-only variables the client hasn't loaded yet: as the server last had them, else unknown (-1).
                 for i, slot in ipairs(S.layout.slots) do
+                    if slot.absent then S.slots[i] = 0 end  -- an entry this client lacks: 0, reported absent
                     if slot.clientOnly and S.slots[i] == nil then
                         S.slots[i] = S.acked and S.acked.slots[i] or 0xFFFFFFFF
                     end
@@ -430,10 +440,9 @@ function M.start(deps)
         S.player = deps.playerName()
         if not S.player then return end
         S.ready, S.slots, S.invs, S.acked = false, {}, {}, nil
-        deps.namedVars(function(named, namedBase, clientOnly)
-            S.named = named
-            deps.manifest.build({ configs = deps.configs, jobs = deps.jobs, bits = bits, named = named,
-                                  namedBase = namedBase, clientOnly = clientOnly, skillNames = deps.skillNames,
+        deps.namedVars(function(fields)
+            deps.manifest.build({ configs = deps.configs, jobs = deps.jobs, bits = bits, fields = fields,
+                                  skillNames = deps.skillNames,
                                   configHash = deps.configHash, fingerprint = deps.fingerprint }, function(layout)
                 S.layout = layout
                 baseline()
@@ -453,7 +462,14 @@ function M.start(deps)
             if slot.kind == "base" then
                 if type(value) == "number" then S.slots[i] = deps.manifest.packBase(slot, value) end
             elseif slot.kind == "named" then
-                S.slots[i] = (deps.readVar(slot.name) or 0) & 0xFFFFFFFF  -- a VarBit of this base: fresh read
+                if slot.start and type(value) == "number" and math.tointeger(value) then
+                    -- A VarBit of this base: its bits of the new value (the same as reading the VarBit).
+                    S.slots[i] = fieldValue(slot, math.tointeger(value) >> slot.start)
+                elseif slot.name == name and type(value) == "number" then
+                    S.slots[i] = fieldValue(slot, value)  -- the variable itself
+                else
+                    S.slots[i] = fieldValue(slot, deps.readVar(slot.name))  -- the variable itself, or no value: read it
+                end
             end
         end
     end)

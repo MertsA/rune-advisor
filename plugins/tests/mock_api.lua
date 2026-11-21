@@ -173,33 +173,42 @@ local contents = {
     WORN = { { obj = { id = 9075, name = "Astral rune" }, count = 50 } },
     TRADEOFFER = { { obj = { id = 995, name = "Coins" }, count = 1000000 } },  -- must never be exported
 }
+-- Hand-listed VarBits are fields of bigger player variables, sent at their own width. Their bases and masks are
+-- the game's (the 2026-11-17 var dump), since the exporter checks each against lib/exported_vars.lua; a VarBit's
+-- `value` is its field's value. SMKI_2 holds the Slayer points (bits 0-16) and master (17-22) and, at bit 30, a
+-- field nobody listed.
+local smki2 = { id = 40, configName = "SMKI_2", value = 610 | (6 << 17) | (1 << 30) }
+local function varBit(id, name, base, mask, value)
+    return { id = id, configName = name, value = value, isVarBit = true, varBitMask = mask,
+             baseVar = type(base) == "table" and base or { id = id + 1000, configName = base } }
+end
 var = { VarPlayer = configTable({
     { id = 1, configName = "QP", value = 473 },
-    { id = 2, configName = "MINING_OREBOX_COPPER", value = 120 },
-    { id = 3, configName = "MINING_OREBOX_COPPER_UPGRADED", value = 100 },
+    varBit(-2, "MINING_OREBOX_COPPER", "MINING_PARENT_10", 0x3FFF, 120),
+    varBit(-3, "MINING_OREBOX_COPPER_UPGRADED", "MINING_PARENT_10", 0x1FC000, 100),
     { id = 7, configName = "MINING_OREBOX_GOLD_STONE_SPIRIT_VAR", value = 936 },
     { id = 4, configName = "FRIEND_SORT_MODE", value = 2 },  -- not exported
     { id = 5, configName = "DNDTRACKER_PENGUIN_HUNTING_FAV", value = 1 },  -- interface state: not exported
-    { id = 6, configName = "TOKEN_DD_PENGUIN_HIDE_SEEK", value = 194 },  -- penguin points
-    { id = 8, configName = "TOOLBELT_HAMMER", value = 1 },  -- a tool on the belt: listed by name
+    varBit(-6, "TOKEN_DD_PENGUIN_HIDE_SEEK", "WOF23_TOKENS_DD", 0x80, 0),  -- a reset token used this week: no
+    varBit(-8, "TOOLBELT_HAMMER", "TOOLBELT_FREE_TOOLS", 0x10000, 1),  -- a tool on the belt: listed by name
     { id = 21, configName = "TOOLBELT_LAST_SLOT", value = 5 },  -- interface state: not exported
     { id = 22, configName = "CHEEVO_TOOLBELT", value = 1 },  -- has the word in it, but is no tool: not exported
-    { id = 9, configName = "ITEMLOG_ITEM_ABYSSAL_WHIP", value = 2 },  -- collection log: 2 whips obtained
+    varBit(-9, "ITEMLOG_ITEM_ABYSSAL_WHIP", "ITEMLOG_TRACKING207", 0xFFFF, 2),  -- collection log: 2 whips obtained
     { id = 10, configName = "ITEMLOG_ITEM_DRAGON_AXE", value = 0 },  -- made-up name
     { id = 11, configName = "INVENT_MATERIAL_BASE_PARTS", value = 3100 },  -- Invention materials storage
     { id = 12, configName = "INVENT_MATERIAL_JUNK", value = 900 },
-    { id = 13, configName = "CRAMULET_HAS_CAMULET", value = 1 },  -- cramulet: one flag per absorbed amulet
-    { id = 14, configName = "CRAMULET_HAS_CATSPEAK", value = 0 },
-    { id = 15, configName = "STATUE_LAST_SKILL", value = 9 },  -- last strange rock: Herblore (code 9, observed 2026-10-31)
-    { id = 16, configName = "ELFCITY_STATUE_LAST_SKILL", value = 14 },  -- last golden rock: Smithing (8 + index 6)
-    { id = 17, configName = "SMKI_SLAYER_POINTS", value = 610 },  -- Slayer points balance
-    { id = 18, configName = "PVM_HUB_CAMPFIRE_STATE", value = 6 },  -- War's Retreat campfire: elder (assumed encoding)
+    varBit(-13, "CRAMULET_HAS_CAMULET", "APMEKEN_VAR1", 0x1, 1),  -- cramulet: one flag per absorbed amulet
+    varBit(-14, "CRAMULET_HAS_CATSPEAK", "APMEKEN_VAR1", 0x2, 0),
+    varBit(-15, "STATUE_LAST_SKILL", "STATUE_MAIN", 0xFE0, 9),  -- last strange rock: Herblore (code 9, observed 2026-10-31)
+    varBit(-16, "ELFCITY_STATUE_LAST_SKILL", "ELFCITY_PERM4", 0x3E0, 14),  -- last golden rock: Smithing (8 + index 6)
+    varBit(-17, "SMKI_SLAYER_POINTS", smki2, 0x1FFFF, 610),  -- Slayer points balance
+    varBit(-18, "PVM_HUB_CAMPFIRE_STATE", "PVM_HUB_1", 0x1E00000, 6),  -- War's Retreat campfire: elder (assumed encoding)
     { id = 19, configName = "BONUSXP_ATTACK", value = 25000 },  -- banked bonus xp
     { id = 21, configName = "SLAYER_TARGET", value = 42 },  -- Slayer assignment: abyssal demons, 37 left, from Kuradal
     { id = 22, configName = "SLAYER_COUNT", value = 37 },
-    { id = 23, configName = "SLAYER_MASTER", value = 6 },
+    varBit(-23, "SLAYER_MASTER", smki2, 0x7E0000, 6),
     { id = 20, configName = "BONUSXP_ATTACK_STORED", value = 0 },
-    questVar, tallyVar, flagVar, nullVar, baseVar,
+    questVar, tallyVar, flagVar, nullVar, baseVar, smki2,
 }), VarClient = configTable({
     { id = 1, configName = "STATUE_BAG_CLIENT", value = 1022623217 },  -- client copy of an item's obj var
 }) }

@@ -416,9 +416,11 @@ def test_wire_protocol_replay(tmp_path):
     r = wire.replay(entries, configs, "PlayerOne")
     assert r.consistent, r.errors
     assert [(p.kind, p.verdict == "accepted") for p in r.posts] == [
-        ("full", True), ("delta", True), ("delta", True), ("delta", True), ("delta", True), ("delta", False), ("full", True),
-        ("delta", True), ("delta", True)]  # then: the metal bank loaded empty (marker), a relogin's first delta
-    assert [p.bytes for p in r.posts][1:5] == [7, 7, 13, 10]  # kills, saturated kills, logs picked up, xp
+        ("full", True), ("delta", True), ("delta", True), ("delta", True), ("delta", True), ("delta", True), ("delta", False),
+        ("full", True), ("delta", True), ("delta", True)]
+    # (Slayer points moving in their base var after the xp; then the metal bank loaded empty (marker), a relogin's
+    # first delta)
+    assert [p.bytes for p in r.posts][1:6] == [7, 7, 13, 10, 9]  # kills, saturated kills, logs, xp, points (17 bits)
     assert r.state.invs["METAL_BANK"] == {}  # known and empty, not unknown
     fields, named, skills, members = wire.values(r.layout, r.state)
     assert fields["HERALDS_POST_KILLS"] == 31 and fields["HERALDS_PROGRESS"] == 42 and fields["HERALDS_FLAGS"] == 2
@@ -532,7 +534,7 @@ def test_exporter_end_to_end_plan(tmp_path):
     assert p.inventories["CRAMULET"] == {"Camulet": 1}
     assert p.last_rock_skill == {"strange": "Herblore", "golden": "Smithing"}
     assert any(n.startswith("statue rocks: the next rock is half as likely in Herblore, Smithing (") for n in p.notes)
-    assert p.currencies == {"Slayer points": 610} and p.campfire_tier == "elder"
+    assert p.currencies == {"Slayer points": 700} and p.campfire_tier == "elder"  # 610 -> 700 in run_wire.lua
     assert p.bonus_xp == {"Attack": 2500} and any(n.startswith("bonus xp read from BONUSXP_") for n in p.notes)  # var in tenths
     assert p.holdings["Huge XP lamp"] == 13 and p.holdings["Astral rune"] == 50 and p.holdings["Logs"] == 125
     assert "Coins" not in p.holdings
@@ -2563,6 +2565,64 @@ def test_export_api_applies_posts_like_the_replay(tmp_path):
     # the derived snapshot reports it done rather than listing tests.
     after = next(x for x in expanded["achievements"] if x["name"] == "After the Heralds")
     assert after["completed"] is True and "requirements" not in after
+
+
+def test_export_api_static_manifest(tmp_path):
+    """A full post names lib/exported_vars.lua's list by hash (the server holds every released one in
+    wire_manifests/) and lists the entries its client lacks; those are 0 on the wire and left out of the
+    snapshot. A 0.4.x post with its `named` list still works; a manifest the server lacks is refused."""
+    import base64
+
+    from rune_advisor import wire
+    from rune_advisor.export_api import ApiError, ItemNames, Service, Store
+
+    configs, entries, posts = _mock_configs_and_posts(tmp_path)
+    full = posts[0]
+    fields = wire.load_manifest(full["manifest"])
+    assert fields is not None and ("SMKI_SLAYER_POINTS", 17, "bit") in fields and ("QP", 32, "var") in fields
+    assert ("STATUE_BAG_CLIENT", 32, "client") in fields
+    absent = {fields[i][0] for i in full["absent"]}
+    assert "QP" not in absent and "ITEMLOG_ITEM_ABYSSAL_SLAYER_HELM" in absent  # the mock game has a few dozen
+    service = Service(Store(tmp_path / "api"), configs, ItemNames({}))
+    assert service.apply("andrew", full)["accepted"]
+    rec = service.store.load_state("andrew", "PlayerOne")
+    assert rec["layout"]["manifest"] == full["manifest"] and rec["layout"]["absent"] == sorted(full["absent"])
+    snap = service.snapshot("andrew", "PlayerOne")
+    assert snap["vars"]["SMKI_SLAYER_POINTS"] == 610 and "ITEMLOG_ITEM_ABYSSAL_SLAYER_HELM" not in snap["vars"]
+    # A delta keeps the record's absent list.
+    assert service.apply("andrew", posts[1])["accepted"]
+    assert service.store.load_state("andrew", "PlayerOne")["layout"]["absent"] == sorted(full["absent"])
+    # Bounds: an unknown manifest, absent indexes out of range or repeated.
+    for bad in ({"manifest": full["manifest"] ^ 1}, {"absent": [len(fields)]}, {"absent": [0, 0]}, {"absent": [True]},
+                {"skills": ["no spaces"]}, {"inventories": ["BANK", "BANK"]}):
+        with pytest.raises(ApiError) as e:
+            service.apply("someone else", dict(full, **bad))
+        assert e.value.status == 400, bad
+    # A 0.4.x post: the lists in the post, every name 32 bits, described as "|named:".
+    r = wire.replay(entries, configs, "PlayerOne")
+    names = [n for n, _, _ in fields]
+    legacy = wire.WireLayout.build_named(configs, names, full["skills"], full["inventories"])
+    assert legacy.description() != r.layout.description() and "|named:QP," in legacy.description()
+    state = wire.WireState(list(r.state.slots), {k: dict(v) for k, v in r.state.invs.items()})
+    canon = wire.canonical(legacy, state)
+    old = {"player": "PlayerTwo", "kind": "full", "layout": legacy.hash, "new": wire.hash_canonical(legacy, canon),
+           "seq": 1, "configs": configs.fingerprint, "plugin": "0.4.1", "named": names,
+           "skills": full["skills"], "inventories": full["inventories"], "body": base64.b64encode(canon).decode()}
+    assert service.apply("andrew", old)["accepted"]
+    assert "named" in service.store.load_state("andrew", "PlayerTwo")["layout"]
+    assert service.snapshot("andrew", "PlayerTwo")["vars"]["QP"] == 473
+
+
+def test_exported_vars_manifest_is_on_the_server():
+    """lib/exported_vars.lua's list is in wire_manifests/ entry for entry (scripts/build_exported_vars.py
+    --check), so the server can read what a plugin built from it posts."""
+    import subprocess
+    import sys
+
+    repo = Path(__file__).parent.parent
+    result = subprocess.run([sys.executable, "scripts/build_exported_vars.py", "--check"], cwd=repo,
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_export_api_over_http(tmp_path):
