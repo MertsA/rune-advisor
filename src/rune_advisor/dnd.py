@@ -179,10 +179,13 @@ NOMAD_ITEMS = {"Gold charm": 15 / 4, "Green charm": 15 / 4, "Crimson charm": 15 
 # --- monthly -------------------------------------------------------------------------------------------------------
 
 
-troll_invasion_xp = troll_book_xp  # the reward book at full completion
+troll_invasion_xp = troll_book_xp  # the reward book at full completion (in game 2026-11-20: 79,200 on Herblore 100,
+#                                    the formula exactly)
 
 
 GOD_STATUES = 5  # one statue a location; Construction xp = a large lamp each, Prayer (to 99) or Slayer = a medium lamp
+# Confirmed in game 2026-11-20: one statue paid 35,488 Construction xp at 99 (a large lamp) and 15,931 Slayer xp at 95
+# (a medium lamp).
 
 # Giant Oyster: xp per harvest by level (wiki table), 30 harvests of each a month.
 OYSTER_FISHING = [(40, 54), (60, 264), (80, 1435), (90, 3435), (98, 6966)]
