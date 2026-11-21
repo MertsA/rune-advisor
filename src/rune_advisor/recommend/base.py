@@ -41,6 +41,9 @@ class Banded:
     covered: bool = True  # every band's materials are in stock
     any: bool = False  # at least one band has recipe data
     runs: list = field(default_factory=list)
+    # Hours a consumable boost (a familiar, juju) took off bands that had no recipe method, against their plain
+    # rate (Context._boosted_run): plans that keep the plain grind hours subtract it.
+    boost_saving: float = 0.0
 
     @property
     def steps(self) -> list[str]:
@@ -472,6 +475,13 @@ class Context:
             run = choose_run(methods, seg, stock, group, self.player.name, self.player.members)
             if self.player.ironman and run is not None and not run.covered:
                 run = self._cheapest_to_gather(methods, seg, stock, group) or run
+            if run is None and (twins := self.cost.boosted_methods(skill, level)):
+                # A gathering band (no recipe): a familiar or juju kept up, where it beats the plain rate with its
+                # consumables costed.
+                plain = self.cost.hours_for_xp(skill, int(a), int(b))
+                if (boosted := self._boosted_run(twins, seg, stock, group, plain)) is not None:
+                    run = boosted
+                    out.boost_saving += plain - seg / run.rate
             if run is None or not (run.covered or run.method == methods[0]["method"] or self.player.ironman):
                 out.hours += self.cost.hours_for_xp(skill, int(a), int(b))
                 out.covered = False
@@ -510,6 +520,24 @@ class Context:
             if best is None or per_xp < best[0]:
                 best = (per_xp, run)
         return best[1] if best and best[0] < float("inf") else None
+
+    def _boosted_run(self, twins: list[dict], xp: float, stock: dict[str, int],
+                     group: dict[str, dict[str, int]] | None, plain_hours: float) -> MaterialRun | None:
+        """The consumable-boost twin (sim.boosted_rows) that gets `xp` cheapest, counting the time to make what
+        the stock lacks net of its by-products (making pouches is Summoning xp other goals may want), or None
+        when none beats `plain_hours`. Consumables already held are used first and cost nothing."""
+        best = None
+        for m in twins:
+            run = material_run(m, xp, stock, group, self.player.name, self.player.members)
+            if run is None:
+                continue
+            hours = xp / run.rate
+            for name, n in run.shortfall.items():
+                src = self.gatherer.complete_source(name)
+                hours += n * self.gatherer.net_cost(src) if src else float("inf")
+            if hours < plain_hours and (best is None or hours < best[0]):
+                best = (hours, run)
+        return best[1] if best else None
 
     def _recipe_methods(self, methods: list[dict], xp: float) -> list[dict]:
         """Every catalogue recipe for the skill at this level, as pseudo guide rows (speed from ticks,
@@ -559,6 +587,7 @@ class Context:
         if not p.ironman:
             if banded.any:
                 plan.steps, plan.materials_short = steps + banded.steps, banded.shortfall
+                plan.hours -= banded.boost_saving
                 self._buy(plan)
             return
         mix = bank_mix(p, skill, start_xp, grind_xp, lambda lvl: self.cost.rate(skill, lvl), p.group,
@@ -573,6 +602,8 @@ class Context:
             steps += mix.describe(skill)
         if rest_runs.any:
             steps += rest_runs.steps
+            if not mix.xp:  # with a bank mix, the hours above already come from the runs
+                plan.hours -= rest_runs.boost_saving
             plan.materials_short = rest_runs.shortfall
             for name, n in rest_runs.used.items():
                 plan.items_used[name] = plan.items_used.get(name, 0) + n

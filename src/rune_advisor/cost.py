@@ -150,6 +150,8 @@ def custom_row(m: dict) -> dict:
             **({"actions_per_hour": float(m["actions_per_hour"])} if m.get("actions_per_hour") else {}),
             # Invention twins (mechanics/item_xp.py) remember the method they ride on.
             **({k: m[k] for k in ("base_skill", "base_method") if m.get(k)}),
+            # Consumable-boost twins (sim.boosted_rows): what the boost uses up per hour, and its label.
+            **({"consumes": dict(m["consumes"]), "boost": m.get("boost")} if m.get("consumes") else {}),
             # Measured attention (radv session): game actions per hour and the median gap between inputs.
             "clicks_per_hour": m.get("clicks_per_hour"), "input_gap_s": m.get("input_gap_s"),
             "regular_training": True, "figure": m.get("figure", "typical"), "low_high_meaning": "single"}
@@ -212,6 +214,9 @@ class CostModel:
     replaced: list[tuple[str, str, str]] = field(default_factory=list)
     # Basis of each band's rate ("simulated", "quoted"...), keyed like `methods`.
     band_basis: dict[tuple[str, int], str] = field(default_factory=dict)
+    # "With <boost>" twins of simulated rows (sim.boosted_rows), per skill: kept out of wiki_rows and the rate
+    # bands, so plain rates stay unboosted; the material-aware planner weighs them with their consumables.
+    boosted: dict[str, list[dict]] = field(default_factory=dict)
 
     @classmethod
     def default(cls, overrides: dict[str, float] | None = None, use_wiki: bool = True,
@@ -229,8 +234,13 @@ class CostModel:
         methods = {}
         wiki_rows: dict[str, list[dict]] = {}
         excluded, replaced, band_basis = [], [], {}
+        boosted: dict[str, list[dict]] = {}
+        for m in extra_methods or []:
+            if m.get("consumes"):
+                boosted.setdefault(m["skill"], []).append(custom_row(m))
+        extra_methods = [m for m in extra_methods or [] if not m.get("consumes")]
         if use_wiki:
-            rows = _load_wiki_rates(members) + [custom_row(m) for m in extra_methods or []]
+            rows = _load_wiki_rates(members) + [custom_row(m) for m in extra_methods]
             rows, replaced = replaced_by_sims(rows)
             if player is not None:
                 kept = []
@@ -265,19 +275,25 @@ class CostModel:
             source[skill] = "override"
         return cls(rates=rates, quest_length_hours=raw["quest_length_hours"], overridden=set(overrides or {}),
                    rate_source=source, methods=methods, wiki_rows=wiki_rows, baseline=baseline,
-                   excluded=excluded, replaced=replaced, band_basis=band_basis)
+                   excluded=excluded, replaced=replaced, band_basis=band_basis, boosted=boosted)
 
     def with_flat_rate(self, skill: str, rate: float) -> "CostModel":
         return CostModel(rates={**self.rates, skill: [(1, rate)]}, quest_length_hours=self.quest_length_hours,
                          overridden=self.overridden, rate_source=self.rate_source, methods=self.methods,
                          wiki_rows=self.wiki_rows, baseline=self.baseline, excluded=self.excluded,
-                         replaced=self.replaced, band_basis=self.band_basis)
+                         replaced=self.replaced, band_basis=self.band_basis, boosted=self.boosted)
 
     def available_methods(self, skill: str, level: int) -> list[dict]:
         """Usable wiki methods for a skill at a level, fastest first (empty when the rate isn't from the wiki)."""
         if self.rate_source.get(skill) != "wiki":
             return []
         rows = [r for r in self.wiki_rows.get(skill, [])
+                if r["level_min"] <= level and (r.get("level_max") is None or r["level_max"] >= level)]
+        return sorted(rows, key=typical_rate, reverse=True)
+
+    def boosted_methods(self, skill: str, level: int) -> list[dict]:
+        """The consumable-boost twins (sim.boosted_rows) usable at a level, fastest first."""
+        rows = [r for r in self.boosted.get(skill, [])
                 if r["level_min"] <= level and (r.get("level_max") is None or r["level_max"] >= level)]
         return sorted(rows, key=typical_rate, reverse=True)
 

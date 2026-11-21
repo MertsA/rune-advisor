@@ -94,4 +94,6 @@ def all_rows(player: PlayerState) -> list[dict]:
     # for the skilling skills the sims don't cover (combat guide rows are already re-rated by combat.method_rows).
     guide = [r for r in usable_wiki_rows(_load_wiki_rates(player.members)) if r["skill"] not in GUIDE_STYLE]
     rows += item_xp.method_rows(player, rows + guide)
+    # Consumable-boost twins of the simulated rocks and trees (the cost model keeps them apart: CostModel.boosted).
+    rows += sim.boosted_rows(player)
     return rows

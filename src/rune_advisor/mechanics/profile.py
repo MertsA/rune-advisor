@@ -14,7 +14,9 @@ the Elves / signs of the porter, pocket-slot items. What the export can't see is
     stone_spirits = false
 
 Consumables (potions, juju, familiars, porters) are never assumed unless listed: an ironman makes
-each one, and their cost isn't modelled yet.
+each one. What's listed here is taken as always kept up, at no cost. Familiars, mining potions and juju not
+listed are offered as costed options instead (consumables.py: "with <boost>" twins of the simulated rocks and
+trees, taken where the speed is worth more than making what they use up).
 """
 
 from __future__ import annotations

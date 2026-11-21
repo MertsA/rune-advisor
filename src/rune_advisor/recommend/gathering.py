@@ -203,6 +203,12 @@ class Gatherer:
         self._estimated: set[str] = set()
         self._worded: set[tuple[str, str]] = set()  # (item, spot) whose drop chance is a worded rarity's guess
         self._side_xp: dict[str, dict[str, float]] = {}  # method -> other skills' xp per hour
+        # Spots that are consumable-boost twins (sim.boosted_rows): method -> what they use up per hour.
+        self._consumes: dict[str, dict[str, float]] = {}
+        self._consumable_cost: dict[str, float] = {}
+        self._in_progress: set[str] = set()  # items source() is still working out (recipe cycles)
+        self._plain_spot: dict[str, str | None] = {}  # boosted spot -> the same spot without the boost
+        self._making: set[str] = set()  # consumables being planned: spots that use them up are out meanwhile
         # Items no source covers, over every plan this gatherer made: item -> (units, goals they were for).
         self.gaps: dict[str, tuple[int, set[str]]] = {}
         self._unlocking = False  # costing an unlock's levels (which may gather in turn)
@@ -219,13 +225,18 @@ class Gatherer:
             index: dict[str, list] = {}
             p, seen = self.ctx.player, set()
             for skill in sorted({s for rows in self.ctx.cost.wiki_rows.values() for r in rows for s in row_skills(r)}):
-                for row in self.ctx.cost.available_methods(skill, p.level(skill)):
+                # Consumable-boost twins too: their spots pay for what they use up (consumable_hours).
+                for row in self.ctx.cost.available_methods(skill, p.level(skill)) \
+                        + self.ctx.cost.boosted_methods(skill, p.level(skill)):
                     if id(row) in seen or not (row.get("drop_sources") or row.get("yields")):
                         continue
                     seen.add(id(row))
                     rate = typical_rate(row)
                     if row.get("side_xp"):
                         self._side_xp[row["method"]] = row["side_xp"]
+                    if row.get("consumes"):
+                        self._consumes[row["method"]] = row["consumes"]
+                        self._plain_spot[row["method"]] = row.get("base_method")
                     boon = item_multiplier(p) if skill in GATHERING_SKILLS else 1.0
                     for item, per_hour in (row.get("yields") or {}).items():
                         index.setdefault(item, []).append((row["method"], skill, float(per_hour) * boon, rate))
@@ -245,6 +256,26 @@ class Gatherer:
                         index.setdefault(item, []).append((row["method"], skill, per_hour, rate))
             self._drop_index = index
         return self._drop_index
+
+    def consumable_hours(self, item: str) -> float:
+        """Hours to get one more of a consumable a boosted spot uses up, net of its by-products (pouches give
+        Summoning xp other goals may want); inf when nothing complete makes it."""
+        if item in self._in_progress:
+            # Mid-cycle (mining calcified fungus for the very super mining potion that would boost it): not an
+            # option here, and not remembered, since the potion's own source isn't settled yet.
+            return float("inf")
+        if item not in self._consumable_cost:
+            src = self.complete_source(item)
+            self._consumable_cost[item] = self.net_cost(src) if src is not None else float("inf")
+        return self._consumable_cost[item]
+
+    def spot_hours(self, method: str) -> float:
+        """What an hour at a spot costs: the hour, plus making what a boosted spot uses up in it. A spot whose
+        consumable is being planned right now is out (mining the fungus for the potion that boosts that mining)."""
+        uses = self._consumes.get(method, {})
+        if self._making.intersection(uses):
+            return float("inf")
+        return 1.0 + sum(n * self.consumable_hours(i) for i, n in uses.items())
 
     def _add_estimated_spots(self, item: str) -> None:
         """Monsters that drop `item` but no training guide covers: kill rates estimated from the
@@ -276,6 +307,13 @@ class Gatherer:
         if item in self._sources:
             return self._sources[item]
         self._sources[item] = None  # guards recipe cycles
+        self._in_progress.add(item)
+        try:
+            return self._source(item)
+        finally:
+            self._in_progress.discard(item)
+
+    def _source(self, item: str) -> Source | None:
         p = self.ctx.player
         options: list[Source] = []
         cadence = shop_cadence()
@@ -306,7 +344,11 @@ class Gatherer:
         self._add_estimated_spots(item)
         for method, skill, per_hour, rate in self._drops().get(item, []):
             worded = " (the wiki gives only a worded rarity: chance assumed)" if (item, method) in self._worded else ""
-            options.append(Source("drop", f"drops at {method}{worded}", 1 / per_hour,
+            # A boosted spot's hour also costs its consumables (made net of their own by-products).
+            hours = self.spot_hours(method)
+            if hours == float("inf"):
+                continue
+            options.append(Source("drop", f"drops at {method}{worded}", hours / per_hour,
                                   xp_per_unit={skill: rate / per_hour}))
         # Simulated from the wiki's Woodcutting/Mining mechanics for this player's levels and tools.
         if (simulated := self._simulated(item)) is not None:
@@ -697,7 +739,7 @@ class Gatherer:
             if (days := n * src.calendar_per_unit / 24) >= 1:  # weekly shop stock, daily nodes
                 cost += f", ~{days / 7:,.1f} weeks of stock" if src.kind == "shop" else f", ~{days:,.0f} days"
             g.steps.append(f"get {n:,} {item}: {src.how} (~{hours:.1f}h{cost})")
-        self._visit_spots(g, drops)
+        self._visit_spots(g, drops, stock, extra)
         return g
 
     def _held(self, item: str, stock: dict[str, int]) -> int:
@@ -836,9 +878,11 @@ class Gatherer:
         if k > take:
             self._merge(g, self._plan({item: k - take}, stock, extra))
 
-    def _visit_spots(self, g: Gathering, needs: dict[str, int]) -> None:
+    def _visit_spots(self, g: Gathering, needs: dict[str, int], stock: dict[str, int] | None = None,
+                     extra: dict[str, int] | None = None) -> None:
         """Get dropped items with as few hours at spots as possible: a spot drops several items at once,
-        so time spent there for one item also collects the others (the longest need sets the visit)."""
+        so time spent there for one item also collects the others (the longest need sets the visit). A boosted
+        spot (a familiar, juju kept up) counts what it uses up, and those consumables are planned after."""
         index = self._drops()
         info = {m: (skill, rate) for rows in index.values() for m, skill, _, rate in rows}
         visits: dict[str, float] = {}
@@ -852,10 +896,24 @@ class Gatherer:
         while left := missing():
             # The item that takes longest at its best spot decides the next (longer) visit.
             def best(i):
-                return max(index[i], key=lambda r: r[2])
+                return max(index[i], key=lambda r: r[2] / self.spot_hours(r[0]))  # inf cost -> 0, never best
             item = max(left, key=lambda i: left[i] / best(i)[2])
             m, _, per_hour, _ = best(item)
             visits[m] = visits.get(m, 0) + left[item] / per_hour
+        # Consumables come whole: a short boosted visit still uses a full pouch. Where that makes it dearer than the
+        # same spot unboosted for as long as the boost saved, go without.
+        for m, hours in list(visits.items()):
+            plain = self._plain_spot.get(m)
+            if m not in self._consumes or not plain:
+                continue
+            ratio = max((r[2] / p[2] for i in needs for r in index.get(i, []) if r[0] == m
+                         for p in index.get(i, []) if p[0] == plain), default=None)
+            if ratio is None:
+                continue
+            whole = hours + sum(math.ceil(n * hours) * self.consumable_hours(i) for i, n in self._consumes[m].items())
+            if whole >= hours * ratio:
+                del visits[m]
+                visits[plain] = visits.get(plain, 0) + hours * ratio
         for m, hours in sorted(visits.items(), key=lambda kv: -kv[1]):
             skill, rate = info[m]
             got = [f"{min(n, per_hour * hours):,.0f} {i}" + (" (worded rarity: chance assumed)" if (i, m) in self._worded else "")
@@ -865,6 +923,23 @@ class Gatherer:
             g.add_xp(xp, hours)
             side = ", ".join(f"+{v * hours:,.0f} {s} xp" for s, v in xp.items())
             g.steps.append(f"spend ~{hours:.1f}h at {m}: {', '.join(got)} ({side})")
+            if uses := {i: math.ceil(n * hours) for i, n in self._consumes.get(m, {}).items()}:
+                g.steps.append("  using " + ", ".join(f"{n:,} {i}" for i, n in uses.items()))
+                need = {}
+                for i, n in uses.items():
+                    take = min(n, (stock or {}).get(i, 0))
+                    if stock is not None:
+                        stock[i] = stock.get(i, 0) - take
+                    if n > take:
+                        need[i] = n - take
+                if need:
+                    making = set(need) - self._making
+                    self._making |= making
+                    try:
+                        self._merge(g, self._plan(need, stock if stock is not None else dict(self.ctx.player.holdings),
+                                                  extra if extra is not None else {}))
+                    finally:
+                        self._making -= making
 
 
 def gates(recipe: dict, player) -> list[tuple[str, int, bool]]:

@@ -286,6 +286,9 @@ def mining_boost(player: PlayerState) -> MiningBoost:
     if pot := boost_profile.potion(player, "Mining"):
         if pot in (t.get("mining_potion") or {}):
             b.level_per, b.level_flat = t["mining_potion"][pot]["per"], t["mining_potion"][pot]["flat"]
+            if boost_profile.boosts(player).get("potion_average"):
+                # Drunk as each dose wears off (consumables.py): the decaying boost averages half its peak.
+                b.level_per, b.level_flat = 1 + (b.level_per - 1) / 2, b.level_flat / 2
             b.notes.append(pot)
     if player.level("Mining") >= 99 and boost_profile.has(player, "Mining cape*"):
         b.cape = True
@@ -547,4 +550,43 @@ def method_rows(player: PlayerState, max_level: int = 120) -> list[dict]:
                              "level_max": band + SIM_BAND - 1, "xp_per_hour": r.xp_per_hour,
                              "yields": r.yields(), "activity": r.activity, "basis": "simulated", "source": "simulation",
                              "assumptions": [r.trip] if "assumed" in r.trip else []})
+    return rows
+
+
+def boosted_rows(player: PlayerState, max_level: int = 120) -> list[dict]:
+    """A "with <boost>" twin of each simulated row (method_rows) for every consumable boost the player doesn't
+    already use (consumables.options), where the boost makes it faster. Each twin names what it uses up per
+    hour (`consumes`) and carries it as a recipe, one action a tenth of an hour, so the material-aware planner
+    costs the consumables (recommend/base.Context._boosted_run, Gatherer._visit_spots). The cost model keeps
+    twins apart from the training rows (CostModel.boosted), so a skill's plain rates stay unboosted."""
+    from . import consumables
+
+    plain = {(r["skill"], r["activity"], r["level_min"]): r for r in method_rows(player, max_level)}
+    rows = []
+    for skill, rates in (("Woodcutting", woodcutting_rates), ("Mining", mining_rates)):
+        for option in consumables.options(player, skill):
+            boosted = consumables.with_boosts(player, option)
+            for band in range(player.level(skill), max_level + 1, SIM_BAND):
+                for r in rates(boosted, band):
+                    level_min = max(band, next((t["level"] for t in data()["trees"] + data()["rocks"]
+                                                if t.get("name") == r.activity), band))
+                    base = plain.get((skill, r.activity, level_min))
+                    yields = r.yields()
+                    gain = 1 + consumables.MIN_GAIN
+                    # Faster xp, or more items for the same xp (juju's stone spirits, a Waterfiend's doubles).
+                    if base is None or (r.xp_per_hour < base["xp_per_hour"] * gain
+                                        and not any(v >= (base["yields"].get(i) or 0) * gain and v > 0
+                                                    for i, v in yields.items())):
+                        continue
+                    per_action = 1 / consumables.ACTIONS_PER_HOUR
+                    main = max(yields, key=yields.get) if yields else r.item
+                    rows.append({
+                        **base, "method": f"{r.activity} with {option.label} (simulated, {r.tool})",
+                        "xp_per_hour": r.xp_per_hour, "yields": yields, "consumes": dict(option.per_hour),
+                        "boost": option.label, "assumptions": base["assumptions"] + option.assumptions,
+                        "base_skill": skill, "base_method": base["method"],
+                        "recipe": {"output": main, "variants": [{
+                            "output_qty": yields.get(main, 0) * per_action, "xp": r.xp_per_hour * per_action,
+                            "ticks": None, "materials": [[i, n * per_action] for i, n in option.per_hour.items()]}]},
+                    })
     return rows
