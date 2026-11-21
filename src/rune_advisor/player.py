@@ -210,7 +210,8 @@ def apply_activity_feed(p: PlayerState, events: dict[str, Any]) -> None:
 # Containers whose contents are one var per item: var prefix -> (inventory name, item name from the
 # var suffix, suffixes that are flags rather than items).
 VAR_CONTAINERS = {
-    # The herb bag only holds grimy herbs. DINO_HERB_BAG_1..5 are packed state, not herbs.
+    # The herb bag only holds grimy herbs. DINO_HERB_BAG_1..5 are the variables the counts are packed in (four
+    # herbs each); exports up to plugin 0.4.2 carry them too, and they are skipped.
     "DINO_HERB_BAG_": ("HERB_BAG", lambda s: "Grimy " + s.replace("_", " ").lower(),
                        {"1", "2", "3", "4", "5", "GREY_OUT", "UNLOCKED", "UPGRADED"}),
     "ARCH_SOIL_BOX_": ("SOIL_BOX", lambda s: s.replace("_", " ").capitalize(), {"UPGRADE"}),
@@ -250,14 +251,19 @@ CAMPFIRE_STATE_VAR = "PVM_HUB_CAMPFIRE_STATE"
 # Smithing 99 took it 0 -> 106,465 while its table value is 10,646.5; beta, 2026-11-11). BONUSXP_<SKILL>_STORED
 # didn't move then (role unknown); both exported, the first one used.
 BONUS_XP_PREFIX = "BONUSXP_"
-# Penguin Hide and Seek spy points: bits 16-23 of PENG_SPY_PERM1 (184 read as 0x47b80186; buying a 1-point lamp on
-# the beta took it to 0x47b70186, 2026-11-11). The cap is 250, so one byte. Bits 0-15 are the lifetime penguins-spotted
-# count the shop shows (0x0186 = 390 on one character); bits 24+ (0x47) are most likely the Spy Club's permanent unlock flags.
-PENGUIN_POINTS_VAR = "PENG_SPY_PERM1"
+# Penguin Hide and Seek spy points: the VarBit PENG_SPY_POINTS, sent by itself since plugin 0.4.3. Earlier exports
+# sent the whole variable it lives in, PENG_SPY_PERM1, where it is bits 16-23 (184 read as 0x47b80186; buying a
+# 1-point lamp on the beta took it to 0x47b70186, 2026-11-11). Bits 0-15 are PENG_SPY_TOTAL_PENG, the lifetime
+# penguins-spotted count the shop shows; 24-31 are Spy Club unlocks and rework flags.
+PENGUIN_POINTS_VAR = "PENG_SPY_POINTS"
+PENGUIN_POINTS_PACKED_VAR = "PENG_SPY_PERM1"
 
 
 def penguin_points_from_var(variables: dict) -> int | None:
     value = variables.get(PENGUIN_POINTS_VAR)
+    if isinstance(value, int) and value >= 0:
+        return value
+    value = variables.get(PENGUIN_POINTS_PACKED_VAR)
     return (value >> 16) & 0xFF if isinstance(value, int) and value >= 0 else None
 BONUS_XP_UNIT = 10  # var units per xp
 
@@ -310,8 +316,10 @@ GEM_BAG = {"SAPPHIRE": "Uncut sapphire", "EMERALD": "Uncut emerald", "RUBY": "Un
 
 # Statue collection bag: one bit per rock held, bit n = the rock's item id minus the first rock's id (two rocks
 # per skill, in item-id order). Strange rocks are the bag item's obj var, mirrored in STATUE_BAG_CLIENT.
-# Golden rocks are the player var ELFCITY_PERM6: it lost each pair as it went into the Statue of Rhiannon
-# (session 11), while STATUE_BAG_GOLDEN_CLIENT is a copy that only refreshes with the bag. Verified 2026-10-29.
+# Golden rocks are the flags ELFCITY_ROCK_<SKILL><1|2>_STORED, all packed in the player var ELFCITY_PERM6: it lost
+# each pair as it went into the Statue of Rhiannon (session 11), while STATUE_BAG_GOLDEN_CLIENT is a copy that only
+# refreshes with the bag. Verified 2026-10-29. Exports up to plugin 0.4.2 carry ELFCITY_PERM6 itself too; from
+# 0.4.3 only the flags (the variable packs unrelated fields).
 # The strange rock bag's obj var (mirrored in STATUE_BAG_CLIENT while the bag is open): bit n = rock item id minus
 # STATUE_ROCK_AGILITY1's, i.e. the item-id order below (the bag interface shows them row by row in that order).
 # Confirmed 2026-10-31: legacyvarobj=13 with Agility 1 and both Herblore rocks held.
@@ -324,12 +332,28 @@ GOLDEN_ROCK_SKILLS = ["Agility", "Construction", "Crafting", "Divination", "Dung
                       "Magic", "Melee", "Mining", "Prayer", "Ranged", "Slayer", "Smithing", "Summoning", "Woodcutting"]
 
 
+def golden_rocks_var(variables: dict) -> int | None:
+    """The golden rocks held as ELFCITY_PERM6's bitmap (bit 2 x skill index + rock - 1, GOLDEN_ROCK_SKILLS order),
+    rebuilt from the ELFCITY_ROCK_*_STORED flags when the export has them, else ELFCITY_PERM6 as exported."""
+    value, found = 0, False
+    for i, skill in enumerate(GOLDEN_ROCK_SKILLS):
+        for n in (1, 2):
+            flag = variables.get(f"ELFCITY_ROCK_{skill.upper()}{n}_STORED")
+            if isinstance(flag, int):
+                found = True
+                if flag:
+                    value |= 1 << (2 * i + n - 1)
+    if found:
+        return value
+    packed = variables.get("ELFCITY_PERM6")
+    return packed if isinstance(packed, int) else None
+
+
 def statue_bag(variables: dict) -> dict[str, int]:
     """Rocks in the statue collection bag: {"Strange rock (Agility 1)": 1, "Golden rock (Melee 2)": 1, ...}."""
     out = {}
-    for var_name, kind, skills in (("STATUE_BAG_CLIENT", "Strange", STRANGE_ROCK_SKILLS),
-                                   ("ELFCITY_PERM6", "Golden", GOLDEN_ROCK_SKILLS)):
-        value = variables.get(var_name)
+    for value, kind, skills in ((variables.get("STATUE_BAG_CLIENT"), "Strange", STRANGE_ROCK_SKILLS),
+                                (golden_rocks_var(variables), "Golden", GOLDEN_ROCK_SKILLS)):
         if not isinstance(value, int) or value == -1:
             continue
         for bit in range(2 * len(skills)):
@@ -340,7 +364,7 @@ def statue_bag(variables: dict) -> dict[str, int]:
 
 def held_rocks(p: "PlayerState") -> dict[str, dict[str, int]]:
     """Statue rocks the player holds, by kind and skill: {"Strange": {"Herblore": 2}, "Golden": {"Melee": 1}}.
-    Counts the collection bag (statue_bag: golden rocks from ELFCITY_PERM6, strange rocks from the bag's client
+    Counts the collection bag (statue_bag: golden rocks from the ELFCITY_ROCK_* flags, strange rocks from the bag's client
     mirror while the bag is open) plus rock items in any exported inventory ("Strange rock (Herblore)" in the bank
     or backpack: where a rock lands when the bag isn't carried). Two of a skill make a pair for its statue."""
     out: dict[str, dict[str, int]] = {"Strange": {}, "Golden": {}}

@@ -863,6 +863,9 @@ def test_penguin_points_from_var():
     assert penguin_points_from_var({"PENG_SPY_PERM1": 0x47B80186}) == 184  # the beta's value with 184 points
     assert penguin_points_from_var({"PENG_SPY_PERM1": 0x47B70186}) == 183  # after a 1-point Spy Club lamp
     assert penguin_points_from_var({}) is None
+    # Plugin 0.4.3 sends the VarBit itself, which wins over the packed variable of older exports.
+    assert penguin_points_from_var({"PENG_SPY_POINTS": 184}) == 184
+    assert penguin_points_from_var({"PENG_SPY_POINTS": 0, "PENG_SPY_PERM1": 0x47B80186}) == 0
 
 
 def test_bonus_xp_overrides_and_snapshot():
@@ -1552,6 +1555,14 @@ def test_statue_bag_bits():
     assert {"Strange rock (Agility 2)", "Strange rock (Herblore 1)", "Strange rock (Herblore 2)"} <= set(after)
     # After 10 pairs went into the statue (session 11): only Melee 1 and Prayer 1 are left.
     assert {r for r in after if r.startswith("Golden")} == {"Golden rock (Melee 1)", "Golden rock (Prayer 1)"}
+    # Plugin 0.4.3 sends the per-rock flags instead of ELFCITY_PERM6 (the game's own fields of that variable); they
+    # win over it when both are there.
+    flags = {f"ELFCITY_ROCK_{s}{n}_STORED": 0 for s in ("MELEE", "PRAYER", "SLAYER") for n in (1, 2)}
+    flags |= {"ELFCITY_ROCK_MELEE1_STORED": 1, "ELFCITY_ROCK_PRAYER1_STORED": 1, "ELFCITY_PERM6": -52576001}
+    assert {r for r in statue_bag(flags) if r.startswith("Golden")} == {"Golden rock (Melee 1)", "Golden rock (Prayer 1)"}
+    from rune_advisor.player import golden_rocks_var
+    assert golden_rocks_var({"ELFCITY_ROCK_HERBLORE1_STORED": 1}) == 1 << 12  # bit 12, as ELFCITY_PERM6 has it
+    assert golden_rocks_var({"ELFCITY_PERM6": 1114112}) == 1114112 and golden_rocks_var({}) is None
 
 
 def test_free_xp_golden_rock_pairs():
