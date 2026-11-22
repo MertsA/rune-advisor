@@ -222,6 +222,12 @@ def _recipe_inputs() -> frozenset[str]:
     return frozenset(m for r in catalogue() for m, _ in r["materials"])
 
 
+def _same_npc(page: str, npc: str) -> bool:
+    """A drop page ("Razmire Keelgan") and a weekly claim's NPC text ("Razmire in Mort'ton") name the same NPC."""
+    core = re.split(r" in | by | \(", npc.removeprefix("the "))[0]
+    return page.lower().startswith(core.lower()) or (" " not in core and page.split()[0] == core)
+
+
 class Gatherer:
     def __init__(self, ctx: Context):
         self.ctx = ctx
@@ -383,8 +389,9 @@ class Gatherer:
         for src, chance, qty in sources_of(item):
             c, guessed = drop_chance(chance)
             if not c or source_kind(src) not in DAILY_KINDS or EXCLUDED_SOURCES.search(src) \
-                    or src in collection_names():
-                continue
+                    or src in collection_names() or (src == "Managing Miscellania" and item in MISCELLANIA) \
+                    or any(c_["item"] == item and _same_npc(src, c_["npc"]) for c_ in claims.data()):
+                continue  # modelled properly: the kingdom (MISCELLANIA) and the weekly claims (claims.py)
             per = c * (qty or 1)
             why = ASSUMED_RATES["daily"][1]
             out.append(Source("daily", f"from {src} (ASSUMED rate: {why})", CLAIM_VISIT_HOURS / per,
@@ -715,6 +722,28 @@ class Gatherer:
         """Hours per unit the source's by-products save: xp other goals want, and reputation still needed."""
         value = sum(xp * self.ctx.side_value_per_xp(s) for s, xp in src.xp_per_unit.items())
         return value + sum(r * value_per_rep(self.ctx.player, f) for f, r in src.rep.items())
+
+    def bulk_cost(self, item: str, n: float) -> float:
+        """Net hours for `n` of an item the way plan() fills it: a passive supply (the kingdom, a weekly claim) only
+        for what it brings in over PASSIVE_HORIZON_HOURS, the rest from the next option. Comparing methods per unit
+        would take the kingdom's tuna as nearly free for a grind that needs ten times what it supplies."""
+        src = self.complete_source(item)
+        if src is None:
+            return float("inf")
+        if n <= 0:
+            return 0.0
+        chain = [o for o in (self._alternates.get(item) or [src]) if o.complete]
+        chain = chain[chain.index(src):] if src in chain else [src]
+        hours, left = 0.0, float(n)
+        for o in chain:
+            take = left
+            if o.passive and o.calendar_per_unit and o is not chain[-1]:
+                take = min(left, PASSIVE_HORIZON_HOURS / o.calendar_per_unit)
+            hours += take * self.net_cost(o)
+            left -= take
+            if left <= 0:
+                break
+        return hours
 
     def net_cost(self, src: Source) -> float:
         """Cost per unit less what its by-products are worth (never below MIN_NET_SHARE of the cost)."""

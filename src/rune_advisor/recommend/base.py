@@ -528,8 +528,9 @@ class Context:
             hours, same_skill = xp / run.rate, 0.0
             for name, n in run.shortfall.items():
                 src = self.gatherer.complete_source(name)
-                # Net of by-products (side xp other goals want, reputation still needed).
-                hours += n * self.gatherer.net_cost(src) if src else float("inf")
+                # Net of by-products (side xp other goals want, reputation still needed); a capped passive supply
+                # only for what it brings in (Gatherer.bulk_cost).
+                hours += self.gatherer.bulk_cost(name, n)
                 # Making the inputs with this skill (unfinished potions, supers for extremes) trains it too.
                 same_skill += n * src.xp_per_unit.get(skill, 0) if src else 0
             per_xp = hours / (xp + same_skill)
@@ -555,7 +556,7 @@ class Context:
             hours, same = xp / run.rate, 0.0
             for name, n in run.shortfall.items():
                 src = self.gatherer.complete_source(name)
-                hours += n * self.gatherer.net_cost(src) if src else float("inf")
+                hours += self.gatherer.bulk_cost(name, n)
                 same += n * src.xp_per_unit.get(skill, 0) if src else 0
             hours *= xp / (xp + same)
             if hours < plain_hours and (best is None or hours < best[0]):
@@ -574,8 +575,7 @@ class Context:
                 continue
             hours = xp / run.rate
             for name, n in run.shortfall.items():
-                src = self.gatherer.complete_source(name)
-                hours += n * self.gatherer.net_cost(src) if src else float("inf")
+                hours += self.gatherer.bulk_cost(name, n)
             if hours < plain_hours and (best is None or hours < best[0]):
                 best = (hours, run)
         return best[1] if best else None

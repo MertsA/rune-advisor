@@ -185,11 +185,15 @@ ASSUMED_RATES = {
     "no xp": (60.0, "a creature with no combat xp: 60 an hour"),
     "scenery": (60.0, "scenery (a plant, chest or node) with no rate: 60 an hour"),
     "creature": (60.0, "a Hunter creature with no catch rate: 60 an hour"),
+    # The Hunter training guide's giant chinchompas: 20 catches an hour (21,000 xp a catch at 420,000 xp/h).
+    "big game": (20.0, "Big Game Hunter quarry with no rate: 20 catches an hour"),
     "daily": (1 / 24, "an NPC's hand-out or a repeatable activity: once a day"),
     "wave": (1.0, "a minigame's last wave: one run an hour"),
     "random": (1.0, "a random event while skilling: one an hour"),
     "chest": (4.0, "a chest (keys, resets): 4 opens an hour"),
 }
+# The Wendlewick fish farm's pools: fished as one farm (its content rows), never a spot of their own.
+FISH_FARM_POOLS = {"Lobster pool", "Swordfish pool", "Shark pool", "Giant crayfish pool"}
 DAILY_KINDS = {"npc", "other"}  # drop_source_kinds.json kinds costed as once a day (calendar time, a minute of play)
 ONE_OFF_KINDS = {"quest", "achievement"}  # rewards once: no repeatable source
 # Clue scroll caskets per hour by tier, solving clues the player gets (an estimate; clue sources aren't modelled).
@@ -207,6 +211,10 @@ def assumed_rate(player: PlayerState, source: str, style: tuple[str, float]) -> 
     if EXCLUDED_SOURCES.search(source):
         return None
     skill = style[0]
+    if source.endswith(" (pickpocket)"):
+        return None  # rated by the Thieving sim's rows, at the player's level
+    if source in FISH_FARM_POOLS:
+        return None  # rated as the whole farm (data/content_rates.json, "Wendlewick fish farm")
     if source in WAVE_FINALES:  # the Fight Cave / Fight Kiln: a whole run per kill
         n = ASSUMED_RATES["wave"][0]
         return n, skill, 0.0, ASSUMED_RATES["wave"][1]
@@ -217,8 +225,8 @@ def assumed_rate(player: PlayerState, source: str, style: tuple[str, float]) -> 
     if m is None and kind == "monster":  # a monster page with no stats in the tables (often a boss's page name)
         n, why = ASSUMED_RATES["boss"]
         return n, skill, 0.0, f"a monster with no stats: {n:g} kills an hour"
-    if m is None or kind in ("scenery", "creature", "random") or kind in DAILY_KINDS:
-        key = "daily" if kind in DAILY_KINDS else kind if kind in ("scenery", "creature", "random") else "scenery"
+    if m is None or kind in ("scenery", "creature", "random", "big game") or kind in DAILY_KINDS:
+        key = "daily" if kind in DAILY_KINDS else kind if kind in ("scenery", "creature", "random", "big game") else "scenery"
         if key == "scenery" and "chest" in source.lower():
             key = "chest"  # a chest wants a key or a reset: not a node to hit 60 times an hour
         n, why = ASSUMED_RATES[key]

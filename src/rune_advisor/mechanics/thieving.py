@@ -62,6 +62,15 @@ def target_rates(player: PlayerState, level: int | None = None) -> list[dict]:
     return out
 
 
+def _pickpocket_table(link: str) -> str:
+    """The drop source a pickpocket rolls: "<page> (pickpocket)" where the page has kill loot too (a guard: grapes
+    are a kill drop, not a pickpocket one), else the page itself (a Master Farmer's table is all pickpocket loot)."""
+    from ..drops import tables
+
+    split = f"{link} (pickpocket)"
+    return split if split in tables()["sources"] else link
+
+
 def method_rows(player: PlayerState) -> list[dict]:
     rows = []
     for band in bands(player, "Thieving"):
@@ -71,5 +80,5 @@ def method_rows(player: PlayerState) -> list[dict]:
             rows.append(row("Thieving", f"Pickpocketing {t['target']} (simulated)", max(band, t["level"]), band + 4,
                             t["xp_per_hour"], assumptions=["no walking between targets; loot not counted"],
                             activity=f"Pickpocketing {t['link']}", boosts=t["notes"],
-                            drop_sources=[t["link"]], actions_per_hour=t["per_hour"] * t["chance"]))
+                            drop_sources=[_pickpocket_table(t["link"])], actions_per_hour=t["per_hour"] * t["chance"]))
     return rows

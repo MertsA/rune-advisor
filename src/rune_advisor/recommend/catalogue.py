@@ -61,7 +61,27 @@ ONE_OFF_CONVERSIONS = {("Shark", ("Fremennik blade",))}
 # Recipe facilities that aren't a supply: Stealing Creation's kiln turns sacred clay (minigame-only, never
 # banked) into potions, and its "(4)" outputs would otherwise count as the highest dose Herblore makes, so
 # the real (3)s never decanted up and Grand potions came out INCOMPLETE on sacred clay.
-SKIP_FACILITIES = {"Creation kiln", "Pedestal (Dungeoneering)"}  # Daemonheim ensouling: nothing leaves the dungeon
+# The paid sawmill offers too: planks are made at a sawmill with Construction, no fee (the user, 2026-11-21), and
+# portable sawmills are Treasure Hunter only.
+SKIP_FACILITIES = {"Creation kiln", "Pedestal (Dungeoneering)",  # Daemonheim ensouling: nothing leaves the dungeon
+                   "Bill, Plank maker, Sawmill operator", "Portable sawmill"}
+# Construction recipes are training only where building repeats: a workbench, the sawmill, a house hotspot or
+# space. Anything else is built once out in the world (a canoe station, a broken fishing pool, a ruined rope rack,
+# Fort Forinthry, a quest's pig machine (on a "hotspot"), a vine frame on a hops patch), as are statues raised on a plinth.
+REPEATABLE_BUILD = re.compile(r"workbench|sawmill|hotspot|space\b|decoration bench", re.I)
+
+
+def one_time_build(r: dict) -> bool:
+    facility = r.get("facility") or ""
+    if "Statue plinth" in facility:
+        return True
+    if r.get("skill") != "Construction":
+        return False
+    if not facility:  # an item built anywhere (a ship's frame), else scenery: a quest's pig machine, a paddock
+        return r["output"] not in members_items()
+    return not REPEATABLE_BUILD.search(facility) or facility.startswith("Pig ")
+
+
 # Potion doses every family can be decanted to (the wiki names "(4)" for some potions only).
 DECANT_DOSES = {1, 2, 3, 4}
 
@@ -139,7 +159,8 @@ def catalogue() -> list[dict]:
             # floor ends: nothing a plan can carry out.
             out += [r for r in json.loads(path.read_text())["recipes"]
                     if (r["output"], tuple(m for m, _ in r["materials"])) not in ONE_OFF_CONVERSIONS
-                    and r.get("facility") not in SKIP_FACILITIES and not r.get("daemonheim")]
+                    and r.get("facility") not in SKIP_FACILITIES and not r.get("daemonheim")
+                    and not one_time_build(r)]
     out = [{**r, "output": _alias(r["output"])} if _alias(r["output"]) != r["output"] else r for r in out]
     from ..currencies import arc_recipes, shop_recipes
 

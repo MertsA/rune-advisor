@@ -49,6 +49,28 @@ def quantity(q: str | None) -> float:
     return sum(nums) / len(nums) if nums else 1.0
 
 
+ONCE = re.compile(r"(?:\bonly|can only be \w+|only given|unlocked|be obtained) once\b(?!\s*(?:per|a |every))", re.I)
+
+
+WEEKLY = re.compile(r"once (?:per|a) week", re.I)
+
+
+def _notes(d: dict) -> str:
+    return " ".join(n.get("content", "") if isinstance(n, dict) else str(n)
+                    for n in (d.get("Rarity Notes") or []) + (d.get("Quantity Notes") or []))
+
+
+def _thieving(d: dict) -> bool:
+    t = d.get("Drop type") or []
+    return "thieving" in (t if isinstance(t, list) else [t])
+
+
+def once_only(d: dict) -> bool:
+    """A drop line the wiki notes as given once ever ("Can only be looted once", a quest's chest): no source to farm.
+    Notes like "once per week" (claims) or "dropped at once" (all together) aren't."""
+    return bool(ONCE.search(_notes(d)))
+
+
 def category_pages(client: CachedClient, category: str, depth: int = 2, seen: set[str] | None = None) -> set[str]:
     """Article titles in a wiki category and its subcategories (up to `depth` levels)."""
     seen = seen if seen is not None else set()
@@ -70,15 +92,26 @@ def category_pages(client: CachedClient, category: str, depth: int = 2, seen: se
 def main() -> None:
     client = CachedClient()
     sources: dict[str, list[dict]] = {}
-    for r in wiki.bucket_all(client, "dropsline", ["page_name", "item_name", "drop_json", "rare_drop_table"]):
+    lines = list(wiki.bucket_all(client, "dropsline", ["page_name", "item_name", "drop_json", "rare_drop_table"]))
+    # A page with both kill and pickpocket loot (a guard) keeps its pickpocket lines apart, as "<page> (pickpocket)":
+    # the Thieving sim's rows pick from those, kills from the rest.
+    types: dict[str, set[bool]] = {}
+    for r in lines:
+        types.setdefault(r["page_name"], set()).add(_thieving(json.loads(r.get("drop_json") or "{}")))
+    for r in lines:
         d = json.loads(r.get("drop_json") or "{}")
+        page = r["page_name"]
+        if len(types[page]) > 1 and _thieving(d):
+            page = f"{page} (pickpocket)"
         rarity = d.get("Rarity")
-        if (rarity or "").lower() in ("discontinued", "never"):
+        if (rarity or "").lower() in ("discontinued", "never") or once_only(d):
             continue
         # Compact rows: [item, chance per kill/roll (or the worded rarity), average quantity, 1 if the
         # item comes from the shared rare drop table].
         c = chance(rarity)
-        sources.setdefault(r["page_name"], []).append([r["item_name"], c if c is not None else rarity,
+        if c is not None and WEEKLY.search(_notes(d)):
+            c /= 7  # a claim once a week: the planner counts NPC hand-outs a visit a day
+        sources.setdefault(page, []).append([r["item_name"], c if c is not None else rarity,
                                                       round(quantity(d.get("Drop Quantity")), 2),
                                                       1 if r.get("rare_drop_table") else 0])
     monsters = {}

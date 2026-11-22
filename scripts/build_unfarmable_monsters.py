@@ -5,7 +5,8 @@ Usage: python scripts/build_unfarmable_monsters.py
 The gatherer costs a drop the guides don't cover at an estimated kill rate (drops.estimated_kills_per_hour).
 That makes no sense for monsters that only exist inside a minigame or random event (Temple Trekking's nail
 beasts, which the Summoning plan once counted on for 3,750 talon beast charms at 300 kills/h), on the
-player-owned farm (animals are bred, not killed), or in Daemonheim (nothing leaves the dungeon). The list
+player-owned farm (animals are bred, not killed), in Daemonheim (nothing leaves the dungeon), or made one at a time
+at a Creature Creation altar from their own drops (frogeels for cave eels at 300 kills/h). The list
 is the members of those wiki categories plus a few hand-written names. Data: RuneScape Wiki, CC BY-NC-SA 3.0.
 """
 
@@ -24,7 +25,8 @@ API = "https://runescape.wiki/api.php"
 CATEGORIES = ["Temple Trekking", "Random events", "Player-owned farm", "Dungeoneering monsters",
               "Shattered Worlds", "Stealing Creation", "Soul Wars", "Pest Control", "Barbarian Assault",
               "Fist of Guthix", "Castle Wars", "Dominion Tower", "Fight Kiln", "Conquest", "Dimension of Disaster",
-              "Burthorpe Games Room", "Trouble Brewing", "Tears of Guthix"]
+              "Burthorpe Games Room", "Trouble Brewing", "Tears of Guthix",
+              "Creature Creation"]  # hybrids made one at a time at an altar from their ingredients
 # Monsters the categories miss (checked by hand on the wiki).
 EXTRA = ["Nightmare"]  # Daemonheim boss: its drops (Steel titan pouches) never leave the dungeon
 

@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import math
+import re
 from functools import cache
 
 from ..models import PlayerState
@@ -115,12 +116,29 @@ def _monsters() -> dict[str, dict]:
     return data().get("monsters") or {}
 
 
+# Infobox versions that aren't the fight a player farms: replays, minigames, quest encounters, easier or team modes.
+OTHER_VERSIONS = re.compile(r"rumble|dominion tower|dimension of disaster|story|duo|quest|siege|ritual of the mahjarrat"
+                            r"|the world wakes|the mighty fall|gregorovic", re.I)
+
+
+@cache
 def monster(name: str) -> dict | None:
+    """A monster's stats by page name. A page with versions (keyed "Page#Version") gives its normal-mode version,
+    else the toughest one left once replays, minigames, quests, story/duo modes are set aside: for a fight in
+    phases that is the main body (Solak's 2,000,000 lifepoints, not a 35,000-lifepoint leg)."""
     m = _monsters().get(name)
-    if m is None:
-        page = name.split(" (")[0]
-        m = _monsters().get(page) or next((v for v in _monsters().values() if v.get("page") == page), None)
-    return m
+    if m is not None:
+        return m
+    for page in dict.fromkeys((name, name.split(" (")[0])):
+        if (m := _monsters().get(page)) is not None:
+            return m
+        versions = {k.partition("#")[2]: v for k, v in _monsters().items() if v.get("page") == page}
+        if not versions:
+            continue
+        normal = {k: v for k, v in versions.items() if re.search(r"\bnormal\b", k, re.I) and not OTHER_VERSIONS.search(k)}
+        pool = normal or {k: v for k, v in versions.items() if not OTHER_VERSIONS.search(k)} or versions
+        return max(pool.values(), key=lambda v: v.get("life_points") or 0)
+    return None
 
 
 def best_style(player: PlayerState, target: dict) -> tuple[str, float]:

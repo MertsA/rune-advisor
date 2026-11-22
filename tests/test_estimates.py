@@ -187,3 +187,28 @@ def test_guild_unlocks_research_and_hand_ins(monkeypatch):
     yields, xp, notes = archaeology.hand_in(p, 100, restored, 100_000)
     spent = value - yields.get("chronotes", 0)
     assert xp == pytest.approx(100_000 + spent / 550 * 4400) and any("research" in n for n in notes)
+
+
+def test_supply_fixes_from_the_skill_audit():
+    """Fixes from auditing each skill's plan (2026-11-21): bosses use their main version, one-time builds aren't
+    training, bait is a cost unless a prawn perk covers it, weekly claims match their drop pages."""
+    from rune_advisor.mechanics import combat, fishing
+    from rune_advisor.recommend.catalogue import one_time_build
+    from rune_advisor.recommend.gathering import _same_npc
+
+    assert combat.monster("Solak, Guardian of the Grove")["life_points"] == 2_000_000  # not a 35,000 leg
+    assert one_time_build({"skill": "Construction", "output": "Canoe station (Havenhythe)",
+                           "facility": "Dilapidated canoe station"})
+    assert not one_time_build({"skill": "Construction", "output": "Mahogany long table",
+                               "facility": "Furniture workbench"})
+    assert one_time_build({"skill": "Prayer", "output": "Sani Piliu (statue)",
+                           "facility": "Sani Piliu (statue)#Statue plinth"})
+    p = _player(Fishing=99)
+    assert fishing.bait_for(p, "Raw karambwan") == "Raw karambwanji"
+    assert fishing.bait_for(p, "Raw trout") == "Feather" and fishing.bait_for(p, "Raw cave eel") == "Fishing bait"
+    p.boosts = {"prawn_perks": ["bait", "feathers"]}
+    assert fishing.bait_for(p, "Raw trout") is None and fishing.bait_for(p, "Raw cave eel") is None
+    assert fishing.bait_for(p, "Leaping trout") == "Feather"  # barbarian fishing needs its own perk
+    assert fishing.bait_for(p, "Raw karambwan") == "Raw karambwanji" and fishing.bait_for(p, "Raw rocktail")
+    assert _same_npc("Razmire Keelgan", "Razmire in Mort'ton") and not _same_npc("Wizard Mizgog", "Wizard Cromperty in Ardougne")
+    assert drops.assumed_rate(p, "Giant crayfish pool", STYLE) is None  # the fish farm's rows rate it

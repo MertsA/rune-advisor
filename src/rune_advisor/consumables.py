@@ -219,11 +219,13 @@ def boosted_rows(player: PlayerState) -> list[dict]:
                     continue  # faster xp, or more items for the same xp (juju's stone spirits, a Waterfiend)
                 # Items gathered (porter charges): a row can say (a loop handing its finds in for chronotes).
                 items = r.get("items_per_hour", sum(yields.values()))
-                consumes = dict(option.per_hour)
+                consumes = dict(r.get("consumes") or {})  # the row's own (a fish's bait), then the option's
+                for item, n in option.per_hour.items():
+                    consumes[item] = consumes.get(item, 0) + n
                 for item, n in option.per_item.items():
                     consumes[item] = consumes.get(item, 0) + n * items
-                if not consumes:
-                    continue
+                if consumes == (r.get("consumes") or {}):
+                    continue  # the option itself uses nothing up
                 per_action = 1 / ACTIONS_PER_HOUR
                 main = max(yields, key=yields.get) if yields else r["method"]
                 out_qty = yields.get(main, 0) * per_action if yields else 1

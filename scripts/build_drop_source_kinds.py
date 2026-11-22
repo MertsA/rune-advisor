@@ -12,6 +12,7 @@ Data: RuneScape Wiki, CC BY-NC-SA 3.0.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -46,16 +47,25 @@ def main() -> None:
     # Random events (a divine blessing, a B.A.N.K. stander) spawn now and then while skilling; D&Ds are daily or weekly.
     randoms = category_pages(client, "Category:Random events")
     dnds = category_pages(client, "Category:Distractions and Diversions", depth=1)
+    # Big Game Hunter quarry (Anachronia's dinosaurs, Havenhythe's giant chinchompas): tracked and fought, a catch
+    # every few minutes, not a node. The category also holds trees and vines on the hunting grounds; Havenhythe's
+    # quarry isn't in it but all of it drops Apex hide.
+    big_game = category_pages(client, "Category:Big Game Hunter", depth=2)
     out = {}
     for src in sources:
         page = src.split("#")[0]
         kind = next((kind for kind, _ in KINDS if page in pages[kind]), "other")
-        if page in creatures and kind in ("npc", "other", "monster"):
+        if kind in ("scenery", "creature", "npc", "other") and ((page in big_game and not re.match(r"Tree|Jungle vines|.*Shop$", page))
+                                                or any(r[0] == "Apex hide" for r in sources[src])):
+            kind = "big game"
+        elif page in creatures and kind in ("npc", "other", "monster"):
             kind = "creature"
         elif (page in randoms or page in RANDOM_SPAWNS) and kind not in ("item", "monster"):
             kind = "random"
         elif page in dnds and kind not in ("item", "monster"):
             kind = "other"  # once a day (drops.DAILY_KINDS)
+        if src.endswith(" (pickpocket)"):
+            kind = "pickpocket"  # a page's pickpocket loot (build_drop_tables.py): rated by the Thieving sim
         out[src] = kind
     OUT.write_text(json.dumps({"source": "RuneScape Wiki infobox buckets (CC BY-NC-SA 3.0)",
                                "kinds": dict(sorted(out.items()))}, indent=0, ensure_ascii=False) + "\n")

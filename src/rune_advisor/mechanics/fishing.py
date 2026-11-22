@@ -8,6 +8,11 @@ skillchompas, familiars, juju potions, Menaphos spots; the Honed perk multiplies
 the data's order and the first success is caught, so P(fish i) = (1 - P(earlier)) x chance_i. A catch
 attempt is every 4 ticks (5 for the slow fish). xp/h = attempts/h x sum(P x xp), times the xp outfit.
 
+Bait (BAIT, hand-written from the fish pages: the calculator has none): one a catch, carried as the row's
+`consumes`, so a karambwan costs the karambwanji it was caught with (the planner took karambwan as free supply).
+The Prawnbroker's perks (`prawn_perks`) drop bait for rod fishing, feathers for fly fishing and both for barbarian
+fishing; karambwanji and the Living Rock Caverns' living minerals are always needed.
+
 Not in the wiki data (assumptions, listed on the rows): spots move every ~4 minutes (SPOT_MOVE_SECONDS
 walking each time) and bank trips for the fish (trips.py). Fish the module lacks (new Havenhythe spots)
 aren't simulated.
@@ -33,7 +38,36 @@ JUJU = 1.10
 MENAPHOS = 1.1
 RING_LEVELS = 3  # the calculator's ring option: +3 invisible levels (Ring of Whispers assumed)
 FAMILIAR = {"Granite crab": (1.01, 1), "Ibis": (1.02, 3), "Granite lobster": (1.03, 4)}
+# Bait used up a catch, by fish (the fish's wiki page; one each). Fish not listed need none.
+BAIT = {"Raw karambwan": "Raw karambwanji",
+        **dict.fromkeys(("Raw sardine", "Raw herring", "Raw pike", "Raw cave eel", "Slimy eel", "Raw cavefish",
+                         "Raw lava eel"), "Fishing bait"),
+        **dict.fromkeys(("Raw trout", "Raw salmon", "Leaping trout", "Leaping salmon", "Leaping sturgeon"), "Feather"),
+        "Raw rainbow fish": "Stripy feather", "Raw rocktail": "Living minerals"}
+# Which Prawnbroker perk makes a bait unnecessary, by (bait, fish): the Prawnbroker page.
+BARBARIAN = {"Leaping trout", "Leaping salmon", "Leaping sturgeon"}
+PRAWN_PERKS = ("bait", "feathers", "barbarian")
 DEFAULT_DELAY = 4
+
+
+def prawn_perks(player: PlayerState) -> set[str]:
+    """The bait-saving prawn perks owned: all of them with "Almost as Perky as a Prawn" (every perk unlocked), else
+    `prawn_perks = ["bait", "feathers", "barbarian"]` under [players.X.boosts] (the perk vars aren't exported)."""
+    a = player.achievements.get("Almost as Perky as a Prawn")
+    if a is not None and a.completed:
+        return set(PRAWN_PERKS)
+    return {str(x).lower() for x in profile.boosts(player).get("prawn_perks") or []}
+
+
+def bait_for(player: PlayerState, fish: str) -> str | None:
+    """The bait a catch of `fish` uses up, or None (no bait, or a prawn perk covers it)."""
+    bait = BAIT.get(fish)
+    if bait is None or bait in ("Raw karambwanji", "Living minerals"):
+        return bait
+    perks = prawn_perks(player)
+    if fish in BARBARIAN:
+        return None if "barbarian" in perks else bait
+    return None if ("feathers" if bait.endswith("eather") else "bait") in perks else bait
 SPOT_LIFETIME_SECONDS = 252  # ~4m12s average (wiki prose)
 SPOT_MOVE_SECONDS = 10  # walking to the spot's new place (assumption)
 
@@ -150,10 +184,16 @@ def method_rows(player: PlayerState) -> list[dict]:
             trip = trips.gathering(player, "Fishing", place="nearby")
             banked = trip.per_hour(total) / total if total else 1.0
             top = s["top"]
+            fish = {i: ph * move * banked for i, _, ph, _ in s["fish"] if ph > 0}
+            bait: dict[str, float] = {}
+            for i, n in fish.items():
+                if b := bait_for(player, i):
+                    bait[b] = bait.get(b, 0) + n
             rows.append(row("Fishing", f"{top['text']} ({s['spot']}, simulated)", max(band, top["level"]), band + 4,
                             s["xp_per_hour"] * move,
-                            yields={i: ph * move * banked for i, _, ph, _ in s["fish"] if ph > 0},
+                            yields=fish,
                             assumptions=[f"spot moves every ~{SPOT_LIFETIME_SECONDS // 60} min, "
-                                         f"{SPOT_MOVE_SECONDS}s walk", trip.how],
-                            activity=top["text"], boosts=s["notes"]))
+                                         f"{SPOT_MOVE_SECONDS}s walk", trip.how]
+                            + ([f"bait: {', '.join(sorted(bait))}, one a catch"] if bait else []),
+                            activity=top["text"], boosts=s["notes"], **({"consumes": bait} if bait else {})))
     return rows
