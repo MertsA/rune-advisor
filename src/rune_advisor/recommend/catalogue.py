@@ -135,9 +135,11 @@ def catalogue() -> list[dict]:
     for name in ("recipe_catalogue.json", "conversions.json"):
         path = datapkg.path(name)
         if path.is_file():
+            # Daemonheim recipes (tagged by scripts/build_recipe_catalogue.py) make floor-only items, lost when the
+            # floor ends: nothing a plan can carry out.
             out += [r for r in json.loads(path.read_text())["recipes"]
                     if (r["output"], tuple(m for m, _ in r["materials"])) not in ONE_OFF_CONVERSIONS
-                    and r.get("facility") not in SKIP_FACILITIES]
+                    and r.get("facility") not in SKIP_FACILITIES and not r.get("daemonheim")]
     out = [{**r, "output": _alias(r["output"])} if _alias(r["output"]) != r["output"] else r for r in out]
     from ..currencies import arc_recipes, shop_recipes
 

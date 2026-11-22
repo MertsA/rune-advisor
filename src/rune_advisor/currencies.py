@@ -11,12 +11,14 @@ currency itself is earned (`earning`) at a rate from its wiki page:
   * Thaler: 1 every 5 minutes in a Minigame Spotlight minigame (1 a minute on the spotlighted one, not assumed).
   * Runespan points: ~3,000 an hour at 99 Runecrafting (Runespan points page), scaled down below 99.
   * Void knight commendations: 4 a Veteran boat win (Pest Control page); a game every PEST_CONTROL_MINUTES.
-  * Dungeoneering tokens, Slayer points and pilfer points: the rates the toolbelt track uses.
+  * Dungeoneering tokens: solo floors (20% of floor xp) or the Dragonkin V collection, whichever is cheaper
+    (`_dungeoneering_tokens`). Slayer points and pilfer points: the rates the toolbelt track uses.
   * Chimes: selling Arc commodities at the Waiko market (`arc_recipes`, data/arc_commodities.json, base prices);
     the 20,000-a-day trade cap isn't modelled.
 
-Currencies that only buy cosmetics or come from Treasure Hunter or events are left out (`SKIPPED`). Rusty coins
-(Daemonheim's Smuggler) are earned on floors at a flagged estimate (RUSTY_COINS_PER_HOUR). A rate marked
+Currencies that only buy cosmetics or come from Treasure Hunter or events are left out (`SKIPPED`), and so are
+rusty coins: the Smuggler's goods, like everything else made or found on a Daemonheim floor, are lost when the floor
+ends (only the bound items carry over). A rate marked
 "ASSUMED" in its description is flagged for `radv estimates`. Shop stock
 limits on currency shops aren't modelled, and neither are balances except where the export has them (Slayer points).
 Everything else a shop takes stays an unsourced input (`radv gaps` names it).
@@ -36,7 +38,8 @@ if TYPE_CHECKING:
 # Paid, Treasure Hunter, league and holiday-event currencies: their shops sell cosmetics an hour of play can't buy.
 SKIPPED = {"credits", "RuneCoins", "Double XP Tokens", "oddments", "Oddments", "H'oddments", "League points",
            "heartments", "fayre prize tickets", "Christmas spirit", "candy corn", "spooky tokens", "Fallen Leaves",
-           "frozen tokens", "warped tokens", "shattered anima"}
+           "frozen tokens", "warped tokens", "shattered anima",
+           "Rusty coins"}  # Daemonheim's Smuggler: what it sells is lost when the floor ends
 WEEK_HOURS = 7 * 24
 THALER_PER_HOUR = 12.0  # 1 per 5 minutes (Thaler page)
 RUNESPAN_POINTS_AT_99 = 3_000.0  # "roughly 3,000 points ... per hour" at 99 Runecrafting (Runespan points page)
@@ -44,9 +47,11 @@ PEST_CONTROL_POINTS = 4  # a Veteran boat win
 PEST_CONTROL_MINUTES = 7.0  # a 2-3 minute game, the lander's 3-minute wait and the walk back: an assumption
 SLAYER_POINTS_PER_HOUR = 70.0  # as tracks/toolbelt.py
 PILFER_POINTS_PER_HOUR = 900.0  # as tracks/toolbelt.py
-# Rusty coins (Daemonheim's Smuggler): the floor's starting stack plus monster drops, ~4 floors an hour. A flagged
-# estimate: the drop tables give the coin drops only as "Varies".
-RUSTY_COINS_PER_HOUR = 15_000.0
+# Dungeoneering tokens (_dungeoneering_tokens).
+TOKEN_SHARE = 0.2  # tokens per floor xp
+SOLO_FLOOR_XP_PER_HOUR = 150_000.0  # solo floors at 99+: an estimate, flagged
+DRAGONKIN_V_LEVEL = 77
+DRAGONKIN_V_PER_HOUR = 3.0  # collections an hour at 120 Archaeology (Dragonkin V page)
 TASK_OVERHEAD_MINUTES = 3.0  # getting a reaper task from Death and reaching the boss: an assumption
 
 
@@ -124,19 +129,40 @@ def earning(ctx: Context, currency: str) -> tuple[float, str, dict[str, float], 
         return (1 / per_hour, f"win Pest Control on the Veteran boat ({PEST_CONTROL_POINTS} a game, a game every "
                               f"~{PEST_CONTROL_MINUTES:.0f} minutes assumed)", {}, 0.0)
     if currency == "dungeoneering tokens":
-        rate = ctx.cost.rate("Dungeoneering", p.level("Dungeoneering"))
-        return 1 / (0.2 * rate), "Dungeoneering floors (tokens are a tenth of floor xp, x2 with the ring of kinship)", \
-            {"Dungeoneering": 5.0}, 0.0
-    if currency == "rusty coins":
-        return (1 / RUSTY_COINS_PER_HOUR, f"Dungeoneering floors (ASSUMED rate: ~{RUSTY_COINS_PER_HOUR:,.0f} rusty coins an "
-                                          "hour from the starting stack and monster drops)",
-                {"Dungeoneering": ctx.cost.rate("Dungeoneering", p.level("Dungeoneering")) / RUSTY_COINS_PER_HOUR}, 0.0)
+        return _dungeoneering_tokens(ctx)
     if currency == "pilfer points":
         return 1 / PILFER_POINTS_PER_HOUR, "Safecracking (Misthalin three-dial safes)", {}, 0.0
     if currency == "slayer points":
         return (1 / SLAYER_POINTS_PER_HOUR, "Slayer tasks (Laniakea: 22 a task, 110 every 10th, 330 every 50th)",
                 {"Slayer": ctx.cost.rate("Slayer", p.level("Slayer")) / SLAYER_POINTS_PER_HOUR}, 0.0)
     return None
+
+
+def _dungeoneering_tokens(ctx: Context) -> tuple[float, str, dict[str, float], float]:
+    """Dungeoneering tokens the cheaper way the player can earn them:
+
+    * floors: tokens are 20% of a completed floor's xp (Dungeoneering tokens page; bonus xp doesn't count), at
+      SOLO_FLOOR_XP_PER_HOUR (an estimate: the guides quote only team rates, which the skill's hand-written rate is);
+    * the Dragonkin V collection (77 Archaeology): two large token boxes of 5/4 x Dungeoneering level^2 + 50 tokens
+      each a completion (Large dungeoneering token box page), at DRAGONKIN_V_PER_HOUR at 120 Archaeology ("at least
+      3 an hour" at 120/120, Dragonkin V page), scaled by the player's Archaeology rate (an estimate: the artefacts'
+      restoration isn't modelled)."""
+    p = ctx.player
+    lvl = p.level("Dungeoneering")
+    floor_xp = SOLO_FLOOR_XP_PER_HOUR * min(1.0, lvl / 99)
+    best = (1 / (TOKEN_SHARE * floor_xp),
+            f"solo Dungeoneering floors (tokens are 20% of floor xp; ASSUMED rate: ~{floor_xp:,.0f} floor xp an hour)",
+            {"Dungeoneering": 1 / TOKEN_SHARE}, 0.0)
+    arch = p.level("Archaeology")
+    if arch >= DRAGONKIN_V_LEVEL:
+        per_box = 1.25 * lvl ** 2 + 50
+        scale = ctx.cost.rate("Archaeology", arch) / max(1.0, ctx.cost.rate("Archaeology", 120))
+        per_hour = DRAGONKIN_V_PER_HOUR * min(1.0, scale) * 2 * per_box
+        if 1 / per_hour < best[0]:
+            best = (1 / per_hour, f"complete the Dragonkin V collection for 2 large Dungeoneering token boxes "
+                                  f"({2 * per_box:,.0f} tokens at {lvl} Dungeoneering; ASSUMED rate: "
+                                  f"~{DRAGONKIN_V_PER_HOUR * min(1.0, scale):.1f} collections an hour)", {}, 0.0)
+    return best
 
 
 def _reaper(ctx: Context) -> tuple[float, str, dict[str, float], float] | None:

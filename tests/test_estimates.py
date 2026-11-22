@@ -69,12 +69,28 @@ def test_flagged_sources_keep_items_available_and_are_tallied(world):
     assert hours == pytest.approx(10 * widget.hours_per_unit) and goals == {"Zq widget", "Zq gadget"}
 
 
-def test_daemonheim_recipes_never_train():
+def test_daemonheim_floor_items_are_not_sources():
+    """Whatever is made or bought on a Daemonheim floor is lost when it ends (only bound items carry over): the
+    tagged recipes stay in the data but out of the catalogue, and rusty coins buy nothing."""
+    import json
+
+    from rune_advisor import currencies, datapkg
     from rune_advisor.recommend.catalogue import catalogue
 
-    dg = [r for r in catalogue() if r.get("daemonheim")]
-    assert dg and all("(Dungeoneering)" in str(r) or "(Daemonheim)" in str(r) for r in dg)
-    p = _player(Smithing=99, Crafting=99)
-    ctx = Context(player=p, cost=CostModel.default(use_wiki=False))
-    rows = ctx._recipe_methods([{"skill": "Smithing", "level_min": 99}], 1_000_000)
-    assert not [r for r in rows if "(Dungeoneering)" in r["method"] or "(Daemonheim)" in r["method"]]
+    raw = json.loads(datapkg.path("recipe_catalogue.json").read_text())["recipes"]
+    assert [r for r in raw if r.get("daemonheim")]
+    assert not [r for r in catalogue() if r.get("daemonheim")]
+    assert "Rusty coins" in currencies.SKIPPED
+
+
+def test_dungeoneering_tokens_cheapest_way(monkeypatch):
+    from rune_advisor import currencies
+
+    ctx = Context(player=_player(Dungeoneering=100, Archaeology=60), cost=CostModel.default(use_wiki=False))
+    hours, how, xp, _ = currencies.earning(ctx, "Dungeoneering tokens")
+    assert "floors" in how and hours == pytest.approx(1 / (0.2 * currencies.SOLO_FLOOR_XP_PER_HOUR))
+    assert xp == {"Dungeoneering": 5.0}  # 5 floor xp a token
+    ctx = Context(player=_player(Dungeoneering=100, Archaeology=120), cost=CostModel.default(use_wiki=False))
+    hours, how, _, _ = currencies.earning(ctx, "Dungeoneering tokens")
+    per_box = 1.25 * 100 ** 2 + 50
+    assert "Dragonkin V" in how and hours == pytest.approx(1 / (currencies.DRAGONKIN_V_PER_HOUR * 2 * per_box))
