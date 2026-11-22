@@ -118,8 +118,9 @@ def items_named(text: str | None) -> list[str]:
 
 
 # Treasure Hunter-only supplies (wiki infobox `restriction = th`): ironmen can't play Treasure Hunter, so a
-# method that needs them ("Carrion jadinkos (protean traps)") isn't one they can use.
-_TH_ONLY = re.compile(r"^(protean |silverhawk |portable |pulse core|cinder core|magic notepaper)", re.I)
+# method that needs them ("Carrion jadinkos (protean traps)") isn't one they can use. Magic notepaper is not one:
+# Stanley Limelight sells it for thaler, and enchanted notepaper is made with Invention 97 (2026-11-22).
+_TH_ONLY = re.compile(r"^(protean |silverhawk |portable |pulse core|cinder core)", re.I)
 
 
 def th_only_items(text: str | None) -> list[str]:
@@ -129,7 +130,7 @@ def th_only_items(text: str | None) -> list[str]:
 
 # The same supplies named anywhere in free text. The free-to-play guide rows have no requirement text and
 # name the supply in the method itself ("Logs, portable brazier").
-_TH_MENTION = re.compile(r"\b(protean \w+|silverhawk \w+|portable \w+|pulse cores?|cinder cores?|magic notepaper)", re.I)
+_TH_MENTION = re.compile(r"\b(protean \w+|silverhawk \w+|portable \w+|pulse cores?|cinder cores?)", re.I)
 
 
 def th_only_mentions(text: str | None) -> list[str]:
