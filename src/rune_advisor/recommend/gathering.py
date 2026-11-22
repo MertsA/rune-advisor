@@ -14,6 +14,8 @@ For each item a plan is short of, the cheapest way to get it (fewest hours per u
   * farm   grow it on the player's farming patches from seeds (bank first, else gathered): a run's
            minutes are play time, and growth is calendar time (crops of one patch type share the
            patches), reported separately. Patch counts, yields and run lengths are assumptions (PATCHES).
+           The Herblore Habitat's patches and the harmony pillars are taken as kept planted (KEPT_PLANTED): a
+           passive supply like the kingdom's, whose growth isn't a cost; harmony moss grows with xp trained.
   * method a [[methods]] entry in rune_advisor.toml that `yields` the item (new content the guides
            don't cover yet), collected per visit like drops, with its `side_xp`.
   * disassemble  Invention materials: disassemble whichever item gives the material cheapest (the item's own
@@ -112,6 +114,12 @@ PATCHES = {
     "Cactus patch": (2, 3, 4),
     "Mushroom patch": (2, 6, 4),
     "Hops Patch": (4, 10, 6),
+    # Herblore Habitat: one vine herb patch in the middle area and one in the east, one vine bush and one vine
+    # blossom patch (Herblore Habitat page); the run is a witchdoctor mask teleport and a few steps.
+    "Vine herb patch": (2, 7, 4),
+    "Vine bush patch": (1, 4, 2),
+    "Vine flower patch": (1, 1, 2),
+    "Harmony pillar": (4, 3, 4),  # four in the Meilyr district (Harmony moss page)
 }
 # Patches whose plant keeps producing once grown (fruit trees, bushes, cacti: the primal-fruit run "can be
 # farmed without needing new seeds every run"): the seed is planted once, then each harvest only waits for
@@ -119,6 +127,17 @@ PATCHES = {
 # bushes a full run every 6 hours); the seed's cost is spread over PERENNIAL_HARVESTS harvests.
 PERENNIAL_PATCHES = {"Fruit Tree Patch": 120, "Bush patch": 360, "Cactus patch": 120}
 PERENNIAL_HARVESTS = 50
+# Patches the planner takes as kept planted, replanted whenever the player passes (the user's rule, 2026-11-21):
+# the Herblore Habitat's and the Harmony pillars. Their crop comes in like the kingdom's supplies (Source.passive):
+# growth isn't a cost, only the runs and seeds are, and a plan counts on at most PASSIVE_HORIZON_HOURS of it.
+KEPT_PLANTED = {"Vine herb patch", "Vine bush patch", "Vine flower patch", "Harmony pillar"}
+PATCH_QUESTS = {"Harmony pillar": "Plague's End"}
+# Patches that grow with xp, not time: harmony moss advances a stage per 50,000 xp gained in the skill its pillar
+# is attuned to, 200,000 xp for a harvest (Harmony moss seed page). Attunement can be rerolled (10 vis wax a pillar
+# a day), so the pillars are taken as attuned to what the player trains; that xp becomes calendar time at the
+# player's median training rate and ASSUMED_PLAY_HOURS_PER_DAY of play.
+XP_GROWN = {"Harmony pillar": 200_000}
+ASSUMED_PLAY_HOURS_PER_DAY = 3
 # Coins as time, for comparing a shop with other sources and for coins beyond the money pouch: a
 # rough ironman money-making rate. `coins_per_hour` in rune_advisor.toml replaces it (read at call time, so
 # the CLI sets it here before planning).
@@ -207,6 +226,7 @@ class Gatherer:
         self._consumes: dict[str, dict[str, float]] = {}
         self._consumable_cost: dict[str, float] = {}
         self._in_progress: set[str] = set()  # items source() is still working out (recipe cycles)
+        self._training_rate: float | None = None
         self._plain_spot: dict[str, str | None] = {}  # boosted spot -> the same spot without the boost
         self._making: set[str] = set()  # consumables being planned: spots that use them up are out meanwhile
         # Items no source covers, over every plan this gatherer made: item -> (units, goals they were for).
@@ -530,6 +550,15 @@ class Gatherer:
         return (int(mine.get("patches", default[0])), float(crop if crop is not None else default[1]),
                 float(mine.get("run_minutes", default[2])))
 
+    def training_rate(self) -> float:
+        """The player's median xp per hour over their skills at their levels: how fast xp-grown patches (harmony
+        pillars) come round."""
+        if self._training_rate is None:
+            p = self.ctx.player
+            rates = sorted(self.ctx.cost.rate(s, p.level(s)) for s in p.skills if s != "Hitpoints")
+            self._training_rate = rates[len(rates) // 2] if rates else 100_000.0
+        return self._training_rate
+
     def _farm_source(self, item: str) -> Source | None:
         """Grow `item` on herb patches, if a seed for it is plantable at the player's Farming level."""
         p = self.ctx.player
@@ -538,16 +567,22 @@ class Gatherer:
             patch = next((pt for pt in seed["patch"] if pt in PATCHES or pt in self.ctx.farming), None)
             if item not in seed["crops"] or patch is None or p.level("Farming") < seed["level"]:
                 continue
+            if (quest := PATCH_QUESTS.get(patch)) and not (p.quests.get(quest) and p.quests[quest].done):
+                continue
             sub = self.source(seed["seed"])
             if sub is None:
                 continue
             patches, crop, minutes = self.patches(patch, seed)
             harvests = PERENNIAL_HARVESTS if patch in PERENNIAL_PATCHES else 1  # one seed, many harvests
             grow = PERENNIAL_PATCHES.get(patch, seed["grow_minutes"])
+            if patch in XP_GROWN:  # xp to train, as calendar minutes at the player's pace
+                grow = XP_GROWN[patch] / self.training_rate() * 60 * 24 / ASSUMED_PLAY_HOURS_PER_DAY
             per_unit = minutes / 60 / (patches * crop) + sub.cost_per_unit / crop / harvests
-            src = Source("farm", f"grow from {seed['seed']}", per_unit, seed={**seed, "patch_type": patch},
+            kept = patch in KEPT_PLANTED
+            src = Source("farm", f"grow from {seed['seed']}" + (" (patches kept planted)" if kept else ""), per_unit,
+                         seed={**seed, "patch_type": patch},
                          xp_per_unit={"Farming": (seed["plant_xp"] / harvests + seed["harvest_xp"] * crop) / crop},
-                         calendar_per_unit=grow / 60 / (patches * crop))
+                         calendar_per_unit=grow / 60 / (patches * crop), passive=kept)
             if best is None or src.hours_per_unit < best.hours_per_unit:
                 best = src
         return best
@@ -714,8 +749,16 @@ class Gatherer:
                 g.hours += active
                 g.calendar_hours += n * src.calendar_per_unit
                 g.add_xp(src.xp_per_unit, n)
-                g.steps.append(f"grow {n:,} {item} from {need_seeds:,} {seed['seed']} ({runs:,} {seed['patch_type'].lower()} runs, ~{active:.1f}h "
-                               f"of play, ~{n * src.calendar_per_unit / 24:,.0f} days of growth)")
+                if seed["patch_type"] in XP_GROWN:
+                    xp = runs * XP_GROWN[seed["patch_type"]]
+                    grows = (f"a harvest per {XP_GROWN[seed['patch_type']]:,} xp gained in the skill each is attuned to: "
+                             f"~{xp:,} xp of training, ~{n * src.calendar_per_unit / 24:,.0f} days at "
+                             f"{ASSUMED_PLAY_HOURS_PER_DAY} h a day")
+                else:
+                    grows = f"~{n * src.calendar_per_unit / 24:,.0f} days of growth"
+                kept = ", kept planted" if src.passive else ""
+                g.steps.append(f"grow {n:,} {item} from {need_seeds:,} {seed['seed']} ({runs:,} {seed['patch_type'].lower()} runs{kept}, "
+                               f"~{active:.1f}h of play, {grows})")
                 if need_seeds > take:
                     sub = self._plan({seed["seed"]: need_seeds - take}, stock, extra)
                     g.hours += sub.hours

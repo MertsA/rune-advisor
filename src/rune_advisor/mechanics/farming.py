@@ -21,6 +21,8 @@ COMPOST_LIVES = {"None": 0, "Compost": 1, "Supercompost": 2, "Ultracompost": 3}
 DEFAULT_COMPOST = "Supercompost"  # assumption unless `compost` is set in the boosts table
 SECATEURS = 0.10
 RING = 0.03
+# Crops per harvest the infobox gives as "Varies" (yield_per_harvest -1): the seed page's stated range, averaged.
+VARIABLE_YIELDS = {"Harmony moss seed": 3.0}  # "1 to 5 harmony moss" (Harmony moss seed page)
 
 
 def _roll_key(seed: str) -> str:
@@ -42,7 +44,12 @@ def expected_yield(player: PlayerState, seed: dict, level: int | None = None) ->
         lives = seed["harvest_life"] + COMPOST_LIVES.get(compost, 0)
         return lives / (1 - keep)
     if seed.get("max_harvests"):
-        return seed["max_harvests"] * (seed.get("yield_per_harvest") or 1)
+        per = seed.get("yield_per_harvest") or 1
+        if per <= 0:
+            per = VARIABLE_YIELDS.get(seed["seed"])
+            if per is None:
+                return None
+        return seed["max_harvests"] * per
     return None
 
 

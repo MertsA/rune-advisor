@@ -157,6 +157,23 @@ def custom_row(m: dict) -> dict:
             "regular_training": True, "figure": m.get("figure", "typical"), "low_high_meaning": "single"}
 
 
+# A consuming row's recipe counts a tenth of an hour as one action (consumables.ACTIONS_PER_HOUR).
+ACTIONS_PER_HOUR = 10
+
+
+def consuming_row(row: dict) -> dict:
+    """A row with `consumes` ({item: per hour}) carrying them as a recipe, one action a tenth of an hour, so the
+    material-aware planner (Context._boosted_run) costs what the hour uses up."""
+    if row.get("recipe"):
+        return row
+    per_action = 1 / ACTIONS_PER_HOUR
+    yields = row.get("yields") or {}
+    main = max(yields, key=yields.get) if yields else row["method"]
+    return {**row, "recipe": {"output": main, "variants": [{
+        "output_qty": (yields.get(main, 0) if yields else 1) * per_action, "xp": typical_rate(row) * per_action,
+        "ticks": None, "materials": [[i, n * per_action] for i, n in row["consumes"].items()]}]}}
+
+
 def basis(row: dict) -> str:
     """Where a row's rate comes from: "simulated", "measured", "custom" or "quoted" (a training guide)."""
     return row.get("basis") or "quoted"
@@ -281,6 +298,13 @@ class CostModel:
                     else:
                         kept.append(r)
                 rows = kept
+            # Rows that use something up by the hour (jadinkos needing juju hunter potions) are costed with it, like
+            # the consumable-boost twins: kept out of the rate bands, weighed by the material-aware planner.
+            for r in rows:
+                if r.get("consumes"):
+                    for skill in row_skills(r):
+                        boosted.setdefault(skill, []).append(consuming_row(r))
+            rows = [r for r in rows if not r.get("consumes")]
             for r in usable_wiki_rows(rows):
                 for skill in row_skills(r):
                     wiki_rows.setdefault(skill, []).append(r)
