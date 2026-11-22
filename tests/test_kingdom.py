@@ -39,3 +39,22 @@ def test_without_royal_trouble():
     assert kingdom.per_subject_day(p, "wood", "maple")["Maple logs"] == pytest.approx(892 * 2 / 3 / 10)
     assert not kingdom.settings_for(p, "Mahogany logs")  # Etceteria's hardwood needs Royal Trouble
     assert [s for _, s, _ in kingdom.settings_for(_player(), "Teak logs")] == ["teak", "both"]
+
+
+def test_plans_in_sequence_share_the_kingdom():
+    """A joint plan's goals share one booking (Context.kingdom): what one goal's gathering took, the next can't."""
+    from rune_advisor.cost import CostModel
+    from rune_advisor.recommend.base import Context
+    from rune_advisor.recommend.gathering import PASSIVE_HORIZON_HOURS
+
+    p = _player()
+    booked = kingdom.Ledger(p, PASSIVE_HORIZON_HOURS / 24)
+    full = booked.capacity("Coal", "mining", "coal")
+    assert full == pytest.approx(280 * 54.6)
+    ctx = Context(player=p, cost=CostModel.default(use_wiki=False), kingdom=booked)
+    first = ctx.gatherer.plan({"Coal": 10_000})
+    assert booked.capacity("Coal", "mining", "coal") == pytest.approx(full)  # plan() alone books nothing
+    booked.adopt(first.kingdom)  # what Context._gather does with a kept plan
+    assert booked.capacity("Coal", "mining", "coal") == pytest.approx(full - 10_000)
+    second = Context(player=p, cost=CostModel.default(use_wiki=False), kingdom=booked).gatherer.plan({"Coal": 10_000})
+    assert any(f"get {full - 10_000:,.0f} Coal: Managing Miscellania" in s for s in second.steps)

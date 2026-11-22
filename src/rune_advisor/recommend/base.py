@@ -165,6 +165,9 @@ class Context:
     # in these skills counts against its cost at that rate (side_value_per_xp).
     wanted: dict[str, float] = field(default_factory=dict)
     side_options: bool = True
+    # Managing Miscellania's bookings shared by plans made in sequence (joint plans): each kept plan's gathering adds
+    # its subject-days, so a later goal can't book the same subjects. None: every plan has the kingdom to itself.
+    kingdom: object | None = None
     # GE prices (prices.Prices) for a normal account's bought supplies: their gp counts as time at
     # gathering.COINS_PER_HOUR. None (tests, offline, ironmen) leaves bought supplies uncosted.
     prices: object | None = None
@@ -788,6 +791,8 @@ class Context:
         if not self.player.ironman or not plan.materials_short:
             return
         g = self.gatherer.plan(plan.materials_short, stock, training=skill)
+        if self.kingdom is not None and g.kingdom is not None:
+            self.kingdom.adopt(g.kingdom)
         same = g.xp.pop(skill, 0.0) if skill else 0.0
         if same > 0 and grind_xp > 0:
             keep = grind_xp / (grind_xp + same)

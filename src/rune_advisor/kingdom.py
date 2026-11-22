@@ -104,6 +104,22 @@ class Ledger:
         self.alloc: dict[tuple[str, str], float] = {}
         self.drawn: dict[tuple[str, str, str], float] = {}
 
+    def copy(self) -> Ledger:
+        out = Ledger(self.player, self.days)
+        out.alloc, out.drawn = dict(self.alloc), dict(self.drawn)
+        return out
+
+    def adopt(self, other: Ledger) -> None:
+        """Take on another ledger's bookings (a plan's working copy, once the plan is kept)."""
+        self.alloc, self.drawn = dict(other.alloc), dict(other.drawn)
+
+    def capacity(self, item: str, category: str, setting: str) -> float:
+        """How many of `item` this setting can still bring in: partner subject-days already paid, then free subjects."""
+        per = per_subject_day(self.player, category, setting)[item]
+        key = (category, setting)
+        spare = max(0.0, self.alloc.get(key, 0.0) * per - self.drawn.get((*key, item), 0.0))
+        return spare + self._room(category) * per
+
     def _room(self, category: str) -> float:
         cat = sum(v for (c, _), v in self.alloc.items() if c == category)
         total = sum(self.alloc.values())

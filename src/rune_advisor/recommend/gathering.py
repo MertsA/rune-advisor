@@ -197,6 +197,7 @@ class Gathering:
     # Levels the plan's recipes and resources need that the player lacks, by skill.
     unlocks: dict[str, Unlock] = field(default_factory=dict)
     unlock_hours: float = 0.0  # training or boosting for them
+    kingdom: kingdom.Ledger | None = None  # the kingdom's bookings once this plan is done (Context.kingdom)
 
     def add_unlock(self, skill: str, u: Unlock) -> None:
         if (old := self.unlocks.get(skill)) is None:
@@ -250,7 +251,7 @@ class Gatherer:
         self.flagged: dict[str, str] = {}
         self.flag_use: dict[str, list] = {}
         self._goals: frozenset[str] = frozenset()
-        self._kingdom = kingdom.Ledger(ctx.player, PASSIVE_HORIZON_HOURS / 24)
+        self._kingdom: kingdom.Ledger = self._booked()
         self._plain_spot: dict[str, str | None] = {}  # boosted spot -> the same spot without the boost
         self._making: set[str] = set()  # consumables being planned: spots that use them up are out meanwhile
         # Items no source covers, over every plan this gatherer made: item -> (units, goals they were for).
@@ -731,6 +732,11 @@ class Gatherer:
         value = sum(xp * self.ctx.side_value_per_xp(s) for s, xp in src.xp_per_unit.items())
         return value + sum(r * value_per_rep(self.ctx.player, f) for f, r in src.rep.items())
 
+    def _booked(self) -> kingdom.Ledger:
+        """The kingdom's subject-days other plans in this sequence already took (Context.kingdom: a joint plan's
+        goals share one), else a free kingdom over the passive window."""
+        return self.ctx.kingdom or kingdom.Ledger(self.ctx.player, PASSIVE_HORIZON_HOURS / 24)
+
     def bulk_cost(self, item: str, n: float) -> float:
         """Net hours for `n` of an item the way plan() fills it: a passive supply (the kingdom, a weekly claim) only
         for what it brings in over PASSIVE_HORIZON_HOURS, the rest from the next option. Comparing methods per unit
@@ -746,7 +752,10 @@ class Gatherer:
         for o in chain:
             take = left
             if o.passive and o.calendar_per_unit and o is not chain[-1]:
-                take = min(left, PASSIVE_HORIZON_HOURS / o.calendar_per_unit)
+                # The kingdom: what its subjects can still bring in, once earlier goals' bookings are out.
+                cap = self._booked().capacity(item, *o.kingdom) if o.kingdom \
+                    else PASSIVE_HORIZON_HOURS / o.calendar_per_unit
+                take = min(left, cap)
             hours += take * self.net_cost(o)
             left -= take
             if left <= 0:
@@ -836,12 +845,13 @@ class Gatherer:
         on the way needs are trained first, once each (except `training`: the plan's own skill)."""
         stock = dict(stock if stock is not None else self.ctx.player.holdings)
         outer_goals, self._goals = self._goals, self._goals or frozenset(short)
-        if not outer_goals:  # a new plan: the kingdom's subjects are free again for its window
-            self._kingdom = kingdom.Ledger(self.ctx.player, PASSIVE_HORIZON_HOURS / 24)
+        if not outer_goals:  # a new plan: the kingdom as booked before it (Context.kingdom), else all free
+            self._kingdom = self._booked().copy()
         try:
             g = self._plan(short, stock, {})
         finally:
             self._goals = outer_goals
+        g.kingdom = self._kingdom
         if (any(st.lstrip().startswith("disassemble ") for st in g.steps)
                 and "MATERIALS_STORAGE" not in self.ctx.player.inventories):
             # Exports since 2026-10-31 carry the storage as INVENT_MATERIAL_* vars (inventory MATERIALS_STORAGE).
