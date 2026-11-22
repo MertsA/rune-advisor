@@ -42,7 +42,7 @@ def test_harmony_moss_grows_with_training_on_pillars_kept_planted(monkeypatch):
     patches, crop, _ = g.patches("Harmony pillar", MOSS)
     assert (patches, crop) == (4, 3.0)  # four pillars, 1-5 moss a harvest
     # A harvest per 200,000 xp trained, at the player's pace and a few hours of play a day.
-    days_per_harvest = 200_000 / g.training_rate() / gathering.ASSUMED_PLAY_HOURS_PER_DAY
+    days_per_harvest = 200_000 / g.training_rate() / gathering.PLAY_HOURS_PER_DAY
     assert moss.calendar_per_unit == pytest.approx(days_per_harvest * 24 / (patches * crop))
     plan = g.plan({"Harmony moss": 24})
     assert any("kept planted" in s and "xp gained" in s for s in plan.steps)

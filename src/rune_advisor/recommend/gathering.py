@@ -47,6 +47,7 @@ import re
 from dataclasses import dataclass, field, replace
 from functools import cache
 from .. import datapkg
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from ..cost import row_skills, typical_rate
@@ -85,14 +86,14 @@ STACKABLE_SHOP_STOCK = 10_000
 # Disassembly candidates re-costed against the bank when planning (the cheapest by per-unit cost, and as
 # many again whose recipe inputs are banked).
 DISASSEMBLY_SHORTLIST = 8
-PASSIVE_HORIZON_HOURS = 4 * 7 * 24  # a plan counts on at most four weeks of a passive supply (kingdom, weekly claims)
 CLAIM_VISIT_HOURS = 1 / 60  # collecting one weekly claim (claims.py), usually on the way past
 # Waiting counts for a little: a day of calendar time (patch growth, weekly shop stock) costs this many
 # hours of play when choosing sources, so a 100-day wait isn't "free" next to an hour of gathering.
 # Managing Miscellania is the exception (Source.passive): the kingdom works whether the player plays or not, so
 # its coal, logs, flax and fish beat gathering them by hand (the user's rule, 2026-11-12: never mine coal once
 # the kingdom is managed); the plan still reports the days it takes. Weekly claims (claims.py) are passive too.
-# A plan takes at most PASSIVE_HORIZON_HOURS of such a supply and gathers the rest another way.
+# A plan takes what such a supply brings in while the plan is being played (its play hours at PLAY_HOURS_PER_DAY,
+# plus earlier goals' in a joint plan: Gatherer.window_days) and gathers the rest another way.
 CALENDAR_HOUR_COST = 0.25 / 24
 # By-products can make a source look up to this much cheaper, never free.
 MIN_NET_SHARE = 0.1
@@ -131,15 +132,20 @@ PERENNIAL_PATCHES = {"Fruit Tree Patch": 120, "Bush patch": 360, "Cactus patch":
 PERENNIAL_HARVESTS = 50
 # Patches the planner takes as kept planted, replanted whenever the player passes (the user's rule, 2026-11-21):
 # the Herblore Habitat's and the Harmony pillars. Their crop comes in like the kingdom's supplies (Source.passive):
-# growth isn't a cost, only the runs and seeds are, and a plan counts on at most PASSIVE_HORIZON_HOURS of it.
+# growth isn't a cost, only the runs and seeds are, and a plan counts on what grows while it is played.
 KEPT_PLANTED = {"Vine herb patch", "Vine bush patch", "Vine flower patch", "Harmony pillar"}
 PATCH_QUESTS = {"Harmony pillar": "Plague's End"}
 # Patches that grow with xp, not time: harmony moss advances a stage per 50,000 xp gained in the skill its pillar
 # is attuned to, 200,000 xp for a harvest (Harmony moss seed page). Attunement can be rerolled (10 vis wax a pillar
 # a day), so the pillars are taken as attuned to what the player trains; that xp becomes calendar time at the
-# player's median training rate and ASSUMED_PLAY_HOURS_PER_DAY of play.
+# player's median training rate and PLAY_HOURS_PER_DAY of play.
 XP_GROWN = {"Harmony pillar": 200_000}
-ASSUMED_PLAY_HOURS_PER_DAY = 3
+# The player's average play a day (`play_hours_per_day` in rune_advisor.toml; the CLI sets it here): turns a plan's
+# play hours into the days passive supplies (kingdom, weekly claims, kept-planted patches) and offline research
+# have to bring things in (the user's idea, 2026-11-22, replacing a fixed four-week cap).
+PLAY_HOURS_PER_DAY = 3.0
+# Bisection passes plan() makes to settle a plan's length against what passive supplies bring in over it.
+WINDOW_PASSES = 5
 # Coins as time, for comparing a shop with other sources and for coins beyond the money pouch: a
 # rough ironman money-making rate. `coins_per_hour` in rune_advisor.toml replaces it (read at call time, so
 # the CLI sets it here before planning).
@@ -254,6 +260,7 @@ class Gatherer:
         self.flag_use: dict[str, list] = {}
         self._goals: frozenset[str] = frozenset()
         self._kingdom: kingdom.Ledger = self._booked()
+        self._window_bound = False  # this pass of a plan ran into a passive supply's window (_plan_window)
         self._plain_spot: dict[str, str | None] = {}  # boosted spot -> the same spot without the boost
         self._making: set[str] = set()  # consumables being planned: spots that use them up are out meanwhile
         # Items no source covers, over every plan this gatherer made: item -> (units, goals they were for).
@@ -644,7 +651,7 @@ class Gatherer:
         options += self._disassembly_sources(item)[:1]
         best = min(options, key=lambda o: (not o.complete, self.net_cost(o)), default=None)
         if best is not None and best.passive:
-            # What a plan falls back on past a passive supply's horizon (PASSIVE_HORIZON_HOURS): the options in
+            # What a plan falls back on past what a passive supply brings in over its window: the options in
             # order, so a weekly claim runs into the kingdom's supply before anything is gathered by hand.
             self._alternates[item] = sorted(options, key=lambda o: (not o.complete, self.net_cost(o)))
         self._sources[item] = best
@@ -749,14 +756,27 @@ class Gatherer:
         return value + sum(r * value_per_rep(self.ctx.player, f) for f, r in src.rep.items())
 
     def _booked(self) -> kingdom.Ledger:
-        """The kingdom's subject-days other plans in this sequence already took (Context.kingdom: a joint plan's
-        goals share one), else a free kingdom over the passive window."""
-        return self.ctx.kingdom or kingdom.Ledger(self.ctx.player, PASSIVE_HORIZON_HOURS / 24)
+        """What passive supplies other plans in this sequence already took (Context.kingdom: a joint plan's goals
+        share one), else nothing taken."""
+        return self.ctx.kingdom or kingdom.Ledger(self.ctx.player, 0.0)
 
-    def bulk_cost(self, item: str, n: float) -> float:
+    def window_days(self, play_hours: float) -> float:
+        """Days passive supplies have to bring things in for a plan of `play_hours`: those hours, plus the earlier
+        goals' in a sequence (Context.play_elapsed), at the player's play a day."""
+        return (self.ctx.play_elapsed + play_hours) / PLAY_HOURS_PER_DAY
+
+    def passive_room(self, item: str, src: Source, days: float, ledger: kingdom.Ledger | None = None) -> float:
+        """Units of `item` a passive source can still bring in over `days`, less what earlier plans drew."""
+        ledger = ledger or self._booked()
+        if src.kingdom:
+            return ledger.capacity(item, *src.kingdom, days=days)
+        return max(0.0, days * 24 / src.calendar_per_unit - ledger.passive.get(src.how, 0.0))
+
+    def bulk_cost(self, item: str, n: float, play_hours: float = 0.0) -> float:
         """Net hours for `n` of an item the way plan() fills it: a passive supply (the kingdom, a weekly claim) only
-        for what it brings in over PASSIVE_HORIZON_HOURS, the rest from the next option. Comparing methods per unit
-        would take the kingdom's tuna as nearly free for a grind that needs ten times what it supplies."""
+        for what it brings in while `play_hours` are played (window_days), the rest from the next option. Comparing
+        methods per unit would take the kingdom's tuna as nearly free for a grind that needs ten times what it
+        supplies."""
         src = self.complete_source(item)
         if src is None:
             return float("inf")
@@ -768,10 +788,8 @@ class Gatherer:
         for o in chain:
             take = left
             if o.passive and o.calendar_per_unit and o is not chain[-1]:
-                # The kingdom: what its subjects can still bring in, once earlier goals' bookings are out.
-                cap = self._booked().capacity(item, *o.kingdom) if o.kingdom \
-                    else PASSIVE_HORIZON_HOURS / o.calendar_per_unit
-                take = min(left, cap)
+                # What it brings in while this is played, once earlier goals' draws are out.
+                take = min(left, self.passive_room(item, o, self.window_days(play_hours)))
             hours += take * self.net_cost(o)
             left -= take
             if left <= 0:
@@ -835,7 +853,7 @@ class Gatherer:
             harvests = PERENNIAL_HARVESTS if patch in PERENNIAL_PATCHES else 1  # one seed, many harvests
             grow = PERENNIAL_PATCHES.get(patch, seed["grow_minutes"])
             if patch in XP_GROWN:  # xp to train, as calendar minutes at the player's pace
-                grow = XP_GROWN[patch] / self.training_rate() * 60 * 24 / ASSUMED_PLAY_HOURS_PER_DAY
+                grow = XP_GROWN[patch] / self.training_rate() * 60 * 24 / PLAY_HOURS_PER_DAY
             extras = PLANT_WITH.get(seed["seed"], {})
             extra_cost = 0.0
             for name, qty in extras.items():
@@ -856,15 +874,21 @@ class Gatherer:
                 best = src
         return best
 
-    def plan(self, short: dict[str, int], stock: dict[str, int] | None = None, training: str = "") -> Gathering:
+    def plan(self, short: dict[str, int], stock: dict[str, int] | None = None, training: str = "",
+             play_before: float = 0.0, play_of: Callable[[Gathering], float] | None = None) -> Gathering:
         """Hours (and coins) to get every item in `short`; `stock` covers recipe inputs first. Levels a recipe
-        on the way needs are trained first, once each (except `training`: the plan's own skill)."""
-        stock = dict(stock if stock is not None else self.ctx.player.holdings)
+        on the way needs are trained first, once each (except `training`: the plan's own skill). `play_before`: the
+        rest of the plan's play hours (a level plan's grind), during which passive supplies bring things in too;
+        `play_of`: the whole plan's play hours given this gathering, when the caller reshapes it (Context._gather)."""
+        start = stock if stock is not None else self.ctx.player.holdings
         outer_goals, self._goals = self._goals, self._goals or frozenset(short)
-        if not outer_goals:  # a new plan: the kingdom as booked before it (Context.kingdom), else all free
-            self._kingdom = self._booked().copy()
         try:
-            g = self._plan(short, stock, {})
+            if outer_goals:  # within a plan: its window and bookings carry on
+                stock = dict(start)
+                g = self._plan(short, stock, {})
+            else:
+                g, stock = self._plan_window(short, start, play_before,
+                                             play_of or (lambda gg: play_before + gg.hours))
         finally:
             self._goals = outer_goals
         g.kingdom = self._kingdom
@@ -1017,11 +1041,13 @@ class Gatherer:
                 elif n > 0:
                     g.short[item] = g.short.get(item, 0) + n
                 continue
-            if src.passive and src.calendar_per_unit and alt is not None \
-                    and (cap := int(PASSIVE_HORIZON_HOURS / src.calendar_per_unit)) < n:
-                # A passive supply only counts for what it brings in over the horizon; the rest is gathered.
-                self._overflow(g, drops, item, n - cap, src, alt, stock, extra)
-                n = cap
+            if src.passive and src.calendar_per_unit and alt is not None:
+                # A passive supply only counts for what it brings in while the plan is played; the rest is gathered.
+                if (cap := int(self.passive_room(item, src, self._kingdom.days, self._kingdom))) < n:
+                    self._window_bound = True
+                    self._overflow(g, drops, item, n - cap, src, alt, stock, extra)
+                    n = cap
+                self._kingdom.passive[src.how] = self._kingdom.passive.get(src.how, 0.0) + n
                 if n <= 0:
                     continue
             if src.kind == "daily":
@@ -1057,7 +1083,7 @@ class Gatherer:
                     xp = runs * XP_GROWN[seed["patch_type"]]
                     grows = (f"a harvest per {XP_GROWN[seed['patch_type']]:,} xp gained in the skill each is attuned to: "
                              f"~{xp:,} xp of training, ~{n * src.calendar_per_unit / 24:,.0f} days at "
-                             f"{ASSUMED_PLAY_HOURS_PER_DAY} h a day")
+                             f"{PLAY_HOURS_PER_DAY:g} h a day")
                 else:
                     grows = f"~{n * src.calendar_per_unit / 24:,.0f} days of growth"
                 kept = ", kept planted" if src.passive else ""
@@ -1092,6 +1118,44 @@ class Gatherer:
         self._visit_spots(g, drops, stock, extra)
         return g
 
+    def _plan_window(self, short: dict[str, int], start: dict[str, int], play_before: float,
+                     play_of: Callable[[Gathering], float]) -> tuple[Gathering, dict[str, int]]:
+        """A new plan: passive supplies bring in what they make over the plan's own length (window_days), which
+        depends on what they bring in (more from them, less play, a shorter window). The first pass assumes only
+        `play_before`; while a supply is cut short by the window, bisect the assumed length between that and the
+        longest plan, keeping the last pass whose window doesn't outlast its own play. Returns the plan and the
+        stock it leaves."""
+        flags = {k: [v[0], set(v[1])] for k, v in self.flag_use.items()}
+
+        def run(assumed: float) -> tuple[Gathering, dict[str, int], kingdom.Ledger, dict, bool]:
+            self.flag_use = {k: [v[0], set(v[1])] for k, v in flags.items()}
+            self._kingdom = self._booked().copy()
+            self._kingdom.days = self.window_days(assumed)
+            self._window_bound = False
+            stock = dict(start)
+            g = self._plan(short, stock, {})
+            return g, stock, self._kingdom, self.flag_use, self._window_bound
+
+        lo = play_before
+        best = run(lo)
+        if not best[4]:
+            return best[0], best[1]
+        if play_of(best[0]) >= lo:  # fits: the answer lies between this and the plan's length
+            hi = play_of(best[0])
+        else:  # the plan comes out shorter than `play_before` (its inputs train its own skill): search below
+            lo, hi, best = 0.0, lo, run(0.0)
+        for _ in range(WINDOW_PASSES):
+            if hi - lo <= 0.05 * max(hi, 1.0):
+                break
+            mid = (lo + hi) / 2
+            trial = run(mid)
+            if play_of(trial[0]) >= mid:  # the window fits inside the plan's own play
+                lo, best = mid, trial
+            else:
+                hi = mid
+        g, stock, self._kingdom, self.flag_use, _ = best
+        return g, stock
+
     def _overflow(self, g: Gathering, drops: dict[str, int], item: str, n: int, src: Source, alt: Source,
                   stock: dict[str, int], extra: dict[str, int]) -> None:
         """What a capped passive supply can't bring in, from the item's next source. Dropped at a spot: in this
@@ -1111,6 +1175,8 @@ class Gatherer:
         bring in, then new subject-days while the window and the subjects allow. Returns what is still short."""
         category, setting = src.kingdom
         free, new, days = self._kingdom.take(item, n, category, setting)
+        if free + new < n - 0.5:
+            self._window_bound = True
         got = math.floor(free + new + 1e-6)
         if got <= 0:
             return n

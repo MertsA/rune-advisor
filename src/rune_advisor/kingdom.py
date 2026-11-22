@@ -95,35 +95,37 @@ def items() -> frozenset[str]:
 
 
 class Ledger:
-    """One plan's use of the kingdom over a window of `days`: subject-days per (category, setting), at most 10
+    """One plan's (or a joint plan's) use of passive supplies over a window of `days`: subject-days per (category, setting), at most 10
     subjects a category and the player's subjects in all, and what each item has drawn from them. Items that come
     together (tuna and swordfish) share the subject-days bought for either."""
 
     def __init__(self, player: PlayerState, days: float):
         self.player, self.days = player, days
         self.alloc: dict[tuple[str, str], float] = {}
+        self.passive: dict[str, float] = {}  # other passive supplies (weekly claims, kept-planted patches): units drawn
         self.drawn: dict[tuple[str, str, str], float] = {}
 
     def copy(self) -> Ledger:
         out = Ledger(self.player, self.days)
-        out.alloc, out.drawn = dict(self.alloc), dict(self.drawn)
+        out.alloc, out.drawn, out.passive = dict(self.alloc), dict(self.drawn), dict(self.passive)
         return out
 
     def adopt(self, other: Ledger) -> None:
         """Take on another ledger's bookings (a plan's working copy, once the plan is kept)."""
-        self.alloc, self.drawn = dict(other.alloc), dict(other.drawn)
+        self.alloc, self.drawn, self.passive = dict(other.alloc), dict(other.drawn), dict(other.passive)
 
-    def capacity(self, item: str, category: str, setting: str) -> float:
+    def capacity(self, item: str, category: str, setting: str, days: float | None = None) -> float:
         """How many of `item` this setting can still bring in: partner subject-days already paid, then free subjects."""
         per = per_subject_day(self.player, category, setting)[item]
         key = (category, setting)
         spare = max(0.0, self.alloc.get(key, 0.0) * per - self.drawn.get((*key, item), 0.0))
-        return spare + self._room(category) * per
+        return spare + self._room(category, days) * per
 
-    def _room(self, category: str) -> float:
+    def _room(self, category: str, days: float | None = None) -> float:
+        days = self.days if days is None else days
         cat = sum(v for (c, _), v in self.alloc.items() if c == category)
         total = sum(self.alloc.values())
-        return max(0.0, min(SUBJECTS_PER_CATEGORY * self.days - cat, subjects(self.player) * self.days - total))
+        return max(0.0, min(SUBJECTS_PER_CATEGORY * days - cat, subjects(self.player) * days - total))
 
     def take(self, item: str, n: float, category: str, setting: str) -> tuple[float, float, float]:
         """Draw up to `n` of `item`: (units from subject-days already bought, units from new ones, new subject-days)."""

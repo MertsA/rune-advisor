@@ -168,6 +168,8 @@ class Context:
     # Managing Miscellania's bookings shared by plans made in sequence (joint plans): each kept plan's gathering adds
     # its subject-days, so a later goal can't book the same subjects. None: every plan has the kingdom to itself.
     kingdom: object | None = None
+    # Play hours earlier goals of a sequence took (joint plans): passive supplies kept bringing things in meanwhile.
+    play_elapsed: float = 0.0
     # GE prices (prices.Prices) for a normal account's bought supplies: their gp counts as time at
     # gathering.COINS_PER_HOUR. None (tests, offline, ironmen) leaves bought supplies uncosted.
     prices: object | None = None
@@ -535,17 +537,18 @@ class Context:
                 same_skill += n * src.xp_per_unit.get(skill, 0) if src else 0
             # Net of by-products (side xp other goals want, reputation still needed); a capped passive supply
             # only for what it brings in (Gatherer.bulk_cost). A spot's whole catch is costed as one visit.
-            hours += self._shortfall_hours(m, run.shortfall)
+            hours += self._shortfall_hours(m, run.shortfall, hours)
             per_xp = hours / (xp + same_skill)
             if best is None or per_xp < best[0]:
                 best = (per_xp, run)
         return best[1] if best and best[0] < float("inf") else None
 
-    def _shortfall_hours(self, method: dict, shortfall: dict[str, int]) -> float:
+    def _shortfall_hours(self, method: dict, shortfall: dict[str, int], play_hours: float = 0.0) -> float:
         """Hours to gather a run's shortfall. For a catch mix (`spot`: everything one multi-yield spot brings in, each
         processed), the cheaper of the items' own sources and that spot's visit, whose hours cover every item at once
         (the longest need sets it); per item, each would be charged the whole visit."""
-        each = sum(self.gatherer.bulk_cost(name, n) for name, n in shortfall.items())
+        # Passive supplies bring in what they make while the run is played (Gatherer.window_days).
+        each = sum(self.gatherer.bulk_cost(name, n, play_hours) for name, n in shortfall.items())
         spot = method.get("spot")
         if not spot or not shortfall:
             return each
@@ -573,7 +576,7 @@ class Context:
             hours, same = xp / run.rate, 0.0
             for name, n in run.shortfall.items():
                 src = self.gatherer.complete_source(name)
-                hours += self.gatherer.bulk_cost(name, n)
+                hours += self.gatherer.bulk_cost(name, n, xp / run.rate)
                 same += n * src.xp_per_unit.get(skill, 0) if src else 0
             hours *= xp / (xp + same)
             if hours < plain_hours and (best is None or hours < best[0]):
@@ -592,7 +595,7 @@ class Context:
                 continue
             hours = xp / run.rate
             for name, n in run.shortfall.items():
-                hours += self.gatherer.bulk_cost(name, n)
+                hours += self.gatherer.bulk_cost(name, n, xp / run.rate)
             if hours < plain_hours and (best is None or hours < best[0]):
                 best = (hours, run)
         return best[1] if best else None
@@ -790,7 +793,13 @@ class Context:
         counts toward the goal, so the whole run (crafting and gathering) shrinks to fit."""
         if not self.player.ironman or not plan.materials_short:
             return
-        g = self.gatherer.plan(plan.materials_short, stock, training=skill)
+        def play_of(gg: gathering.Gathering) -> float:
+            # The plan's play hours with this gathering, scaled as below when making the inputs trains the skill.
+            same = gg.xp.get(skill, 0.0) if skill else 0.0
+            keep = grind_xp / (grind_xp + same) if same > 0 and grind_xp > 0 else 1.0
+            return plan.hours - (1 - keep) * plan.grind_hours + keep * gg.hours
+
+        g = self.gatherer.plan(plan.materials_short, stock, training=skill, play_before=plan.hours, play_of=play_of)
         if self.kingdom is not None and g.kingdom is not None:
             self.kingdom.adopt(g.kingdom)
         same = g.xp.pop(skill, 0.0) if skill else 0.0

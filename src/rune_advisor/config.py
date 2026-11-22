@@ -90,6 +90,9 @@ class Settings:
     # cap). Unset: the skill where it saves the most planned training.
     bonus_xp_skill: str | None = None
     coins_per_hour: float | None = None
+    # Average hours played a day: how long passive supplies (Managing Miscellania, weekly claims, kept-planted
+    # patches) have to bring things in over a plan (default gathering.PLAY_HOURS_PER_DAY).
+    play_hours_per_day: float | None = None
     # Hours a missing collection-log unique is worth to the player (netted off a boss log's cost). 0 (the
     # default, the user's call): uniques are listed, not valued.
     unique_value_hours: float = 0.0
@@ -165,6 +168,7 @@ def load_settings(path: Path | None = None, beta: bool = False) -> Settings:
         s.skill_weights = {k: float(v) for k, v in raw.get("skill_weights", {}).items()}
         s.bonus_xp_skill = raw.get("bonus_xp_skill") or None
         s.coins_per_hour = raw.get("coins_per_hour")
+        s.play_hours_per_day = raw.get("play_hours_per_day")
         s.unique_value_hours = float(raw.get("unique_value_hours", 0.0))
         s.prefer_exquisite_urns = bool(raw.get("prefer_exquisite_urns", False))
         s.resources = raw.get("resources", [])

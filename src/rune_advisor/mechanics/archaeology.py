@@ -358,11 +358,11 @@ def hand_in(player: PlayerState, level: int, restored: dict[str, float], xp: flo
     """The loop's restored artefacts handed to collectors: chronotes at their collection value (each artefact's
     chronotes, doubled by the set bonus as collections fill: archaeology_guild.COLLECTION_FACTOR). Once every Guild
     shop unlock is bought the chronotes fund the research team (offline, one expedition at a time: at most
-    24 / ASSUMED_PLAY_HOURS_PER_DAY research hours per hour played), whose xp joins the loop's. Returns (yields:
+    24 / PLAY_HOURS_PER_DAY research hours per hour played), whose xp joins the loop's. Returns (yields:
     the chronotes left, xp/h, notes)."""
     from .. import archaeology_guild as ag
     from ..recommend.catalogue import archaeology_collections
-    from ..recommend.gathering import ASSUMED_PLAY_HOURS_PER_DAY
+    from ..recommend import gathering
 
     values = archaeology_collections().get("artefact_chronotes") or {}
     chronotes = sum(n * values.get(a, 0) for a, n in restored.items()) * ag.COLLECTION_FACTOR
@@ -371,7 +371,7 @@ def hand_in(player: PlayerState, level: int, restored: dict[str, float], xp: flo
     if chronotes and best and not ag.unlocks_left(player):
         site, info = best
         cost = ag.research_cost(level, info["factor"])
-        hours = min(24 / ASSUMED_PLAY_HOURS_PER_DAY, chronotes / cost)
+        hours = min(24 / gathering.PLAY_HOURS_PER_DAY, chronotes / cost)
         xp += hours * ag.research_xp(level, info["factor"])
         chronotes -= hours * cost
         notes.append(f"chronotes fund {hours:.1f}h of {site} research a played hour (offline)")

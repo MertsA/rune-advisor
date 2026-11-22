@@ -41,20 +41,40 @@ def test_without_royal_trouble():
     assert [s for _, s, _ in kingdom.settings_for(_player(), "Teak logs")] == ["teak", "both"]
 
 
-def test_plans_in_sequence_share_the_kingdom():
+def test_plans_in_sequence_share_the_kingdom(monkeypatch):
     """A joint plan's goals share one booking (Context.kingdom): what one goal's gathering took, the next can't."""
+    import re
     from rune_advisor.cost import CostModel
+    from rune_advisor.recommend import gathering
     from rune_advisor.recommend.base import Context
-    from rune_advisor.recommend.gathering import PASSIVE_HORIZON_HOURS
 
+    monkeypatch.setattr(gathering, "PLAY_HOURS_PER_DAY", 3.0)
     p = _player()
-    booked = kingdom.Ledger(p, PASSIVE_HORIZON_HOURS / 24)
-    full = booked.capacity("Coal", "mining", "coal")
-    assert full == pytest.approx(280 * 54.6)
+    booked = kingdom.Ledger(p, 0.0)
+    month = booked.capacity("Coal", "mining", "coal", days=28)
+    assert month == pytest.approx(280 * 54.6)
     ctx = Context(player=p, cost=CostModel.default(use_wiki=False), kingdom=booked)
-    first = ctx.gatherer.plan({"Coal": 10_000})
-    assert booked.capacity("Coal", "mining", "coal") == pytest.approx(full)  # plan() alone books nothing
+    first = ctx.gatherer.plan({"Coal": 10_000}, play_before=84)  # 84 h at 3 h a day: 28 days of subjects
+    assert booked.capacity("Coal", "mining", "coal", days=28) == pytest.approx(month)  # plan() alone books nothing
     booked.adopt(first.kingdom)  # what Context._gather does with a kept plan
-    assert booked.capacity("Coal", "mining", "coal") == pytest.approx(full - 10_000)
-    second = Context(player=p, cost=CostModel.default(use_wiki=False), kingdom=booked).gatherer.plan({"Coal": 10_000})
-    assert any(f"get {full - 10_000:,.0f} Coal: Managing Miscellania" in s for s in second.steps)
+    assert booked.capacity("Coal", "mining", "coal", days=28) == pytest.approx(month - 10_000)
+    ctx2 = Context(player=p, cost=CostModel.default(use_wiki=False), kingdom=booked)
+    second = ctx2.gatherer.plan({"Coal": 10_000}, play_before=84)
+    got = next(int(m[1].replace(",", "")) for s in second.steps if (m := re.match(r"get ([\d,]+) Coal: Managing", s)))
+    window = ctx2.gatherer.window_days(84 + second.hours)  # the plan's own gathering is play time too
+    room = booked.capacity("Coal", "mining", "coal", days=window)
+    assert 0.9 * room <= got <= room + 1  # the window never outlasts the plan's own play (bisection keeps that side)
+    assert got < 10_000
+
+
+def test_passive_supplies_scale_with_play_per_day(monkeypatch):
+    """The window is the plan's play hours at the player's play a day: half the play a day, twice the days."""
+    from rune_advisor.cost import CostModel
+    from rune_advisor.recommend import gathering
+    from rune_advisor.recommend.base import Context
+
+    ctx = Context(player=_player(), cost=CostModel.default(use_wiki=False))
+    monkeypatch.setattr(gathering, "PLAY_HOURS_PER_DAY", 2.0)
+    assert ctx.gatherer.window_days(10) == pytest.approx(5)
+    ctx.play_elapsed = 10  # earlier goals of a joint plan
+    assert ctx.gatherer.window_days(10) == pytest.approx(10)

@@ -221,7 +221,7 @@ def test_a_spots_catch_is_costed_as_one_visit(monkeypatch):
     g = ctx.gatherer
     monkeypatch.setattr(g, "multi_yield_spots", lambda: {"Farm": {"Raw a": 100.0, "Raw b": 50.0}})
     monkeypatch.setattr(g, "spot_hours", lambda m: 1.25)  # the hour plus its feed
-    monkeypatch.setattr(g, "bulk_cost", lambda item, n: n / {"Raw a": 100.0, "Raw b": 50.0}[item])
+    monkeypatch.setattr(g, "bulk_cost", lambda item, n, play=0.0: n / {"Raw a": 100.0, "Raw b": 50.0}[item])
     need = {"Raw a": 200, "Raw b": 100}
     assert ctx._shortfall_hours({"spot": "Farm"}, need) == pytest.approx(2.5)  # 2 visits' hours, with feed
     assert ctx._shortfall_hours({}, need) == pytest.approx(4.0)  # each item alone: 2 h + 2 h

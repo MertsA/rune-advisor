@@ -18,7 +18,6 @@ from ..models import PlayerState, Skill
 from ..resources import LevelPlan, ResourcePool
 from ..xp import MAX_XP, level_at_xp, xp_at
 from .base import HIGH_ALCH_SECONDS, Context
-from .gathering import PASSIVE_HORIZON_HOURS
 
 
 @dataclass
@@ -101,7 +100,9 @@ def _sequence(ctx: Context, goals: list[tuple[str, int]], alone: dict, value_sid
     # rest; then goals whose side xp feeds the others.
     order = sorted(goals, key=lambda g: (-(alone[g].calendar_hours > 0), -helps_others(g)))
     player, pool = _copy_player(ctx.player), _copy_pool(ctx.resources)
-    booked = (ctx.kingdom or kingdom.Ledger(ctx.player, PASSIVE_HORIZON_HOURS / 24)).copy()  # one kingdom for all goals
+    # One kingdom and one set of weekly claims for all goals; each goal's window starts after the earlier goals' play.
+    booked = (ctx.kingdom or kingdom.Ledger(ctx.player, 0.0)).copy()
+    elapsed = ctx.play_elapsed
     credited: dict[str, float] = {}
     joint = JointPlan()
     for skill, target in order:
@@ -114,8 +115,10 @@ def _sequence(ctx: Context, goals: list[tuple[str, int]], alone: dict, value_sid
                     wanted[s] = alone[(s, t)].hours / max(1.0, xp_at(s, t) - ctx.player.xp(s))
         step_ctx = dataclasses.replace(ctx, player=player, resources=pool, side_options=False, wanted=wanted,
                                        _needs=None, _gatherer=None, _finding_needs=False, _activities=None,
-                                       _urn_options={}, _urn_xp={}, kingdom=booked)
+                                       _urn_options={}, _urn_xp={}, kingdom=booked,
+                                       play_elapsed=elapsed)
         plan = step_ctx.level_plan(skill, target)
+        elapsed += plan.hours
         joint.steps.append(JointStep(skill, target, alone[(skill, target)].hours, plan, credited.get(skill, 0.0)))
         # Apply the goal to the player: the skill reaches its target, side xp lands, things get used up.
         _add_xp(player, skill, max(0, xp_at(skill, target) - player.xp(skill)))

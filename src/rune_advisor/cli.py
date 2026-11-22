@@ -46,6 +46,9 @@ def _ctx(player_name: str, use_plugin: bool, beta: bool = False, plugin_only: bo
     if settings.coins_per_hour:
         from .recommend import gathering
         gathering.COINS_PER_HOUR = float(settings.coins_per_hour)
+    if settings.play_hours_per_day:
+        from .recommend import gathering
+        gathering.PLAY_HOURS_PER_DAY = float(settings.play_hours_per_day)
     if group:
         settings.group = [player_name, *group]
     members = False if f2p else settings.player(player_name).members
