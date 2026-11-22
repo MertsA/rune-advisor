@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING
 from ..cost import row_skills, typical_rate
 from ..boosts import GATHERING_SKILLS, item_multiplier
 from ..drops import drop_chance, estimated_kills_per_hour, kills_per_hour, sources_of, tables
-from .. import claims, respect
+from .. import claims, currencies, respect
 from .. import disassembly as dis
 from .. import sim
 from ..gear import equipment
@@ -426,6 +426,9 @@ class Gatherer:
                                       passive=True))
         if farm := self._farm_source(item):
             options.append(farm)
+        if (earned := currencies.earning(self.ctx, item)) is not None:  # reward-shop currencies
+            hours, how, xp, calendar = earned
+            options.append(Source("earn", how, hours, xp_per_unit=xp, calendar_per_unit=calendar))
         for r in by_output().get(item, []):
             if not _usable(r, p, levels=False) or r.get("daily"):
                 continue  # daily-capped conversions (Desert amulets) aren't an hourly source
@@ -741,6 +744,13 @@ class Gatherer:
                 if r["skill"] == "Smithing" and where == "Anvil" and r["xp"] and respect.open_rewards(self.ctx.player):
                     pct = respect.percent_for(self.ctx.player, r["xp"] * actions)
                     earns = f"; at the Artisans' Workshop that is +{pct:.1f}% respect" if pct >= 0.05 else ""
+                if r.get("currency_shop") or not r["skill"]:  # reward shops, merchants, NPC services
+                    price = ", ".join(f"{math.ceil(q * actions):,} {m}" for m, q in r["materials"])
+                    place = f" at {where}" if where else ""
+                    g.steps.append(f"buy {n:,} {item}{place} for {price}" if r.get("currency_shop")
+                                   else f"get {n:,} {item}{place} for {price}")
+                    self._merge(g, self._plan(need, stock, extra))
+                    continue
                 g.steps.append(f"make {n:,} {item}{at} ({r['skill']}, ~{actions * _recipe_seconds(r, self.ctx.player) / 3600:.1f}h)"
                                + (f", gathering {', '.join(f'{v:,} {k}' for k, v in need.items())}" if need else "") + earns)
                 self._merge(g, self._plan(need, stock, extra))

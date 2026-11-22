@@ -173,6 +173,9 @@ def boss_sim_kills_per_hour(player: PlayerState, monster: str,
 
 
 LOOT_TABLE = re.compile(r"^(.+) loot \((story|normal|hard)\)$")
+# Bosses that are a minigame's last wave (the Fight Cave, the Fight Kiln): reached after the waves before them, so
+# the combat sim's rate on the boss alone is no kill rate.
+WAVE_FINALES = {"TzTok-Jad", "Har-Aken"}
 
 
 def estimated_kills_per_hour(player: PlayerState, monster: str,
@@ -186,6 +189,8 @@ def estimated_kills_per_hour(player: PlayerState, monster: str,
         # A boss whose loot the wiki tables per mode ("Zemouregal & Vorkath loot (normal)"): the normal mode's
         # table at the boss's own rate; story and hard modes aren't separate rates here.
         return estimated_kills_per_hour(player, loot.group(1), style) if loot.group(2) == "normal" else None
+    if monster in WAVE_FINALES:
+        return None
     m = tables()["monsters"].get(monster)
     if monster in bosses():
         if (guide := boss_kills_per_hour(player, monster)) is None:

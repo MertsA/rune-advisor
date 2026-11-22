@@ -139,8 +139,27 @@ def catalogue() -> list[dict]:
                     if (r["output"], tuple(m for m, _ in r["materials"])) not in ONE_OFF_CONVERSIONS
                     and r.get("facility") not in SKIP_FACILITIES]
     out = [{**r, "output": _alias(r["output"])} if _alias(r["output"]) != r["output"] else r for r in out]
+    from ..currencies import arc_recipes, shop_recipes
+
+    out += shop_recipes() + arc_recipes()  # reward shops: N of a currency -> the item (currencies.py earns it)
     out = [cast_enchant(r) for r in out]
-    return out + decant_recipes(out)
+    return out + decant_recipes(out) + augment_recipes(out)
+
+
+AUGMENTED = "Augmented "
+
+
+def augment_recipes(recipes: list[dict]) -> list[dict]:
+    """Augmenting gear the recipe data names only as an input ("Augmented sirenic hauberk" in a perk recipe, no
+    recipe making it): the item and an Augmentor at an Inventor's workbench, as every augmentation is."""
+    made = {r["output"] for r in recipes}
+    wanted = {m for r in recipes for m, _ in r["materials"] if m.startswith(AUGMENTED) and m not in made}
+    return [{"skill": "Invention", "output": name, "output_qty": 1.0, "level": 1, "xp": 0.0, "ticks": 1.0,
+             "materials": [[name.removeprefix(AUGMENTED).capitalize() if name.removeprefix(AUGMENTED)[:1].islower()
+                            else name.removeprefix(AUGMENTED), 1.0], ["Augmentor", 1.0]],
+             "members": True, "quests": [], "other_skills": [], "facility": "Inventor's workbench",
+             "conversion": True}
+            for name in sorted(wanted)]
 
 
 @cache

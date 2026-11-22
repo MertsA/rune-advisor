@@ -104,7 +104,8 @@ def test_wiki_quest_items_first_link_only():
 
 def test_ironman_quest_costs_missing_items(player):
     """Wandering Ga'al is a 12-minute miniquest for anyone holding a ring of stone; an ironman without one
-    is looking at a rare TzHaar drop first (user report, 2026-10-31)."""
+    earns 303,000 Tokkul for TzHaar-Hur-Lek's store first (user report, 2026-10-31; the Tokkul shop since
+    currency shops were modelled, 2026-11-21: a rare TzHaar drop before)."""
     from rune_advisor.recommend.plans import quests_plan
 
     gaal = wiki.parse_quest_row(load("wiki_quest_gaal.json")["bucket"][0])
@@ -117,7 +118,7 @@ def test_ironman_quest_costs_missing_items(player):
     player.ironman = True
     iron = Context(player=player, cost=CostModel.default(use_wiki=False), quest_info=quest_info)
     plan = quests_plan(iron, [title])
-    assert plan.hours > base + 5
+    assert plan.hours > base + 1
     assert any("Ring of stone" in n for n in plan.needs)
     assert plan.uncertain  # the ring of visibility isn't in the fixture's export and has no drop source
 
@@ -2427,8 +2428,10 @@ def test_daily_nodes_and_pickpocket_sources():
         "Thieving": Skill("Thieving", 103, xp_for_level(103))})
     assert not any("Golden Bamboo" in r["method"] or "Alaea" in r["method"] for r in sim.method_rows(p))
     g = Gatherer(Context(player=p, cost=CostModel.default(use_wiki=False)))
-    bamboo = g.source("Golden bamboo")
+    bamboo = g._simulated("Golden bamboo")
     assert bamboo.kind == "gather" and bamboo.calendar_per_unit == pytest.approx(24 / 300) and "a day" in bamboo.how
+    # The Bamboo Market sells it for 30 chimes (currencies.py), which can beat the daily node.
+    assert g.source("Golden bamboo").cost_per_unit <= bamboo.cost_per_unit
     assert g.source("Alaea sea salt").kind == "gather"
     farmer = next(r for r in thieving.method_rows(p) if "Master Farmer" in r["method"])
     assert farmer["drop_sources"] == ["Master Farmer"] and farmer["actions_per_hour"] > 0
