@@ -658,6 +658,9 @@ def apply_overrides(p: PlayerState, raw: dict[str, Any]) -> None:
         p.bonus_xp[SKILL_ALIASES.get(skill, skill)] = int(amount)
     if "rested_xp" in mine:
         p.rested_xp = int(mine["rested_xp"])
+    # currencies = { "Dungeoneering tokens" = 250000 }: balances the export lacks (an exported one is overridden).
+    for currency, amount in mine.get("currencies", {}).items():
+        p.currencies[currency] = int(amount)
     if "penguin_points" in mine:  # penguin_points = 184: only needed while the export lacks PENG_SPY_PERM1
         exported = penguin_points_from_var(p.vars)
         p.penguin_points = int(mine["penguin_points"])

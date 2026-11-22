@@ -88,8 +88,11 @@ def context_for(player, settings, client: CachedClient, members: bool | None = N
     # Simulated methods (mechanics/: Woodcutting, Mining, Fishing, Thieving...) replace the guide rows they
     # cover, for this player's levels, tools and boosts.
     from . import mechanics
-    cost = CostModel.default(settings.xp_rates, members=player.members, player=player,
-                             extra_methods=settings.methods + mechanics.all_rows(player))
+    def build_cost(p):
+        return CostModel.default(settings.xp_rates, members=p.members, player=p,
+                                 extra_methods=settings.methods + mechanics.all_rows(p))
+
+    cost = build_cost(player)
     # The export has no achievement categories; the wiki's main/subcategory fills them ("Area Tasks / Elite Ardougne").
     achievement_rows = wiki.fetch_all_achievements(client)
     categories = {r["name"]: " / ".join(c for c in (r.get("maincategory"), r.get("subcategory")) if c)
@@ -114,6 +117,7 @@ def context_for(player, settings, client: CachedClient, members: bool | None = N
         prices=None if player.ironman else _prices(client),
         unique_value_hours=settings.unique_value_hours,
         prefer_exquisite_urns=settings.prefer_exquisite_urns,
+        build_cost=build_cost,
     )
 
 

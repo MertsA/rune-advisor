@@ -170,6 +170,9 @@ class Context:
     kingdom: object | None = None
     # Play hours earlier goals of a sequence took (joint plans): passive supplies kept bringing things in meanwhile.
     play_elapsed: float = 0.0
+    # Builds the cost model for another version of the player (a what-if with a scroll read: tracks/scrolls.py), whose
+    # simulated rows (Archaeology's restoring loop, forging) depend on it. None: the cost model is reused.
+    build_cost: Callable | None = field(default=None, repr=False)
     # GE prices (prices.Prices) for a normal account's bought supplies: their gp counts as time at
     # gathering.COINS_PER_HOUR. None (tests, offline, ironmen) leaves bought supplies uncosted.
     prices: object | None = None

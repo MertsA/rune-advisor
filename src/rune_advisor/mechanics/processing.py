@@ -161,7 +161,17 @@ def effective(player: PlayerState, recipe: dict, for_xp: bool = True) -> dict:
                 notes.append(f"{item} (+{table[key].get('p', 0):.0%} potions)")
     if skill == "Runecraft" and r["output"] in RUNE_LEVELS and r["output_qty"] == 1:
         out_mult *= runes_per_essence(r["output"], player.level("Runecraft"))
+    if skill == "Smithing" and r["output"].endswith(" bar") and not any(m.endswith(" bar") for m, _ in r["materials"]):
+        from .smithing import double_bar_chance
+        if double := double_bar_chance(player, r["output"]):
+            out_mult *= 1 + double  # the extra bar gives no xp: xp stays per smelt
+            notes.append(f"+{double:.1%} double bars")
+    from .. import traits
+    mats, ticks = traits.materials(player, r), traits.ticks(player, r)
+    if mats is not None or ticks is not None:
+        notes.append("Dungeoneering scroll")
     if xp_mult == 1 and out_mult == 1 and not notes:
         return r
     return {**r, "xp": r["xp"] * xp_mult, "output_qty": r["output_qty"] * out_mult,
+            **({"materials": mats} if mats is not None else {}), **({"ticks": ticks} if ticks is not None else {}),
             "boost": "; ".join(notes) if notes else r.get("boost")}

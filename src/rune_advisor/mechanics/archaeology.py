@@ -33,6 +33,7 @@ import math
 from functools import cache
 
 from .. import datapkg
+from .. import traits
 from ..models import PlayerState
 from . import bands, data, profile, row
 
@@ -311,7 +312,8 @@ def restore_loop(player: PlayerState, level: int, hotspot: dict, yields: dict[st
         r = restoration(damaged)
         if r is None or r["level"] > level:
             continue
-        need = {m: q * n for m, q in r["materials"] if m != damaged}
+        share = traits.restoration_share(player)  # the restoration scroll: 2% use no materials
+        need = {m: q * n * (share if m in digs else 1.0) for m, q in r["materials"] if m != damaged}
         extra_hours, extra_xp, ok, used = 0.0, 0.0, True, {}
         for m, q in need.items():
             gap = q - have.get(m, 0)

@@ -54,7 +54,7 @@ from ..cost import row_skills, typical_rate
 from ..boosts import GATHERING_SKILLS, item_multiplier
 from ..drops import (ASSUMED_RATES, CASKETS_PER_HOUR, DAILY_KINDS, EXCLUDED_SOURCES, assumed_rate, drop_chance,
                      estimated_kills_per_hour, kills_per_hour, source_kind, sources_of, tables)
-from .. import claims, currencies, kingdom, respect
+from .. import claims, currencies, kingdom, respect, traits
 from .. import disassembly as dis
 from .. import sim
 from ..gear import equipment
@@ -864,7 +864,8 @@ class Gatherer:
                 extras = None
             if extras:  # a planting material with no source
                 continue
-            per_unit = minutes / 60 / (patches * crop) + (sub.cost_per_unit + extra_cost) / crop / harvests
+            seed_use = traits.seeds_per_planting(p, patch)  # the scroll of life hands some seeds back
+            per_unit = minutes / 60 / (patches * crop) + (sub.cost_per_unit * seed_use + extra_cost) / crop / harvests
             kept = patch in KEPT_PLANTED
             src = Source("farm", f"grow from {seed['seed']}" + (" (patches kept planted)" if kept else ""), per_unit,
                          seed={**seed, "patch_type": patch},
@@ -1065,7 +1066,8 @@ class Gatherer:
                 patches, crop, minutes = self.patches(seed["patch_type"], seed)
                 runs = math.ceil(n / (patches * crop))
                 # Perennials are planted once per patch and harvested every regrowth.
-                need_seeds = min(patches, runs) if seed["patch_type"] in PERENNIAL_PATCHES else math.ceil(n / crop)
+                need_seeds = min(patches, runs) if seed["patch_type"] in PERENNIAL_PATCHES \
+                    else math.ceil(n / crop * traits.seeds_per_planting(self.ctx.player, seed["patch_type"]))
                 take = min(need_seeds, stock.get(seed["seed"], 0))
                 stock[seed["seed"]] = stock.get(seed["seed"], 0) - take
                 plant = {}

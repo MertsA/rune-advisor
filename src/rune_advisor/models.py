@@ -120,6 +120,8 @@ class PlayerState:
     wanted_items: list[str] = field(default_factory=list)
     # Items held back from planning (overrides.toml `reserve`), already taken out of `inventories`.
     reserved: dict[str, int] = field(default_factory=dict)
+    # Dungeoneering scroll traits a what-if plan assumes read (traits.py: valuing a scroll before buying it).
+    assumed_traits: set[str] = field(default_factory=set)
     fetched_at: datetime | None = None
     notes: list[str] = field(default_factory=list)
 

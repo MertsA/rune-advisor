@@ -178,6 +178,49 @@ def forging(player: PlayerState, level: int | None = None) -> list[dict]:
     return out
 
 
+# Fortune on the hammer: 0.1% double bars a rank (Smithing page, "Double bar chance"; 0.11% on a level-20 tool, not read).
+FORTUNE_DOUBLE_PER_RANK = 0.001
+# Modified blacksmith's helmet: +1% double bars, not for masterwork alloys (Smithing page).
+HELMET = "Modified blacksmith's helmet"
+HELMET_DOUBLE = 0.01
+
+
+def _fortune_double(rank: int) -> float:
+    return rank * FORTUNE_DOUBLE_PER_RANK if rank else 0.0
+
+
+def double_bar_chance(player: PlayerState, bar: str) -> float:
+    """The chance a smelt makes an extra bar (sent to the metal bank, no extra xp): 10% past the bar's own level,
+    Varrock armour where its tier covers the metal, Fortune, the modified blacksmith's helmet. 0 for bars smelted from
+    other bars (masterwork alloys, glorious bars)."""
+    key = (bar, player.level("Smithing"), _profile_key(player), profile.has(player, HELMET))
+    cache = player.__dict__.setdefault("_double_bars", {})
+    if key not in cache:
+        cache[key] = _double_bar_chance(player, bar)
+    return cache[key]
+
+
+def _double_bar_chance(player: PlayerState, bar: str) -> float:
+    s = data().get("smithing") or {}
+    b = _boosts(player)
+    varrock = (((data().get("mining") or {}).get("boosts") or {}).get("varrock")) or {}
+    for m in s.get("metals", []):
+        if _bar(m) != bar or not m.get("smelt"):
+            continue
+        ores = _ores(m)
+        if not ores or any(o.endswith(" bar") for o, _ in ores) or "alloy" in m["metal"].lower():
+            return 0.0
+        level = player.level("Smithing")
+        double = s.get("double_bars", 0.1) if level >= (m.get("double_smelt") or 999) else 0.0
+        if b["varrock"] and (m.get("varrock") or [0] * 4)[b["varrock"] - 1] == 1:
+            double += varrock.get(m.get("varrock_no") or "", {}).get("effect", 0)
+        double += _fortune_double(b["fortune"])
+        if profile.has(player, HELMET):
+            double += HELMET_DOUBLE
+        return double
+    return 0.0
+
+
 def smelting(player: PlayerState, level: int | None = None) -> list[dict]:
     s = data().get("smithing") or {}
     level = level or player.level("Smithing")
@@ -197,26 +240,33 @@ def smelting(player: PlayerState, level: int | None = None) -> list[dict]:
         double = s["double_bars"] if level >= (m.get("double_smelt") or 999) else 0
         if b["varrock"] and (m.get("varrock") or [0] * 4)[b["varrock"] - 1] == 1:
             double += varrock.get(m.get("varrock_no") or "", {}).get("effect", 0)
-        double += b["fortune"] / 10 * 0.1 if b["fortune"] else 0
+        double += _fortune_double(b["fortune"])
+        double += HELMET_DOUBLE if profile.has(player, HELMET) else 0.0
         out.append({"metal": m["metal"], "bar": _bar(m), "level": m["level"], "bars_per_hour": bars * (1 + double),
+                    "double": double,
                     "xp_per_hour": bars * m["smelt"] * xp_mult, "ores": ores, "xp": m["smelt"] * xp_mult, "ticks": rate})
     return out
 
 
 def method_rows(player: PlayerState) -> list[dict]:
+    from .. import traits
+    refund = 1 - traits.EFFICIENCY_REFUND if traits.has(player, "efficiency") else 1.0  # the scroll of efficiency
     rows = []
     for band in bands(player, "Smithing"):
         for f in forging(player, band):
             rows.append(row("Smithing", f"{f['item']} (forging, simulated)", max(band, f["level"]), band + 4,
                             f["xp_per_hour"], activity=f["item"],
                             recipe={"output": f["item"], "variants": [
-                                {"output_qty": 1, "xp": f["xp"], "ticks": f["ticks"], "materials": [[f["bar"], f["bars"]]]}]},
+                                {"output_qty": 1, "xp": f["xp"], "ticks": f["ticks"],
+                                 "materials": [[f["bar"], f["bars"] * refund]]}]},
                             assumptions=["bars at hand (an anvil beside a bank)"]))
         for sm in smelting(player, band):
             rows.append(row("Smithing", f"Smelting {sm['bar']} (simulated)", max(band, sm["level"]), band + 4,
                             # No `yields`: bars use up ores (the catalogue's smelting recipes are the source).
                             sm["xp_per_hour"], activity=f"Smelting {sm['bar']}",
                             recipe={"output": sm["bar"], "variants": [
-                                {"output_qty": 1, "xp": sm["xp"], "ticks": sm["ticks"], "materials": sm["ores"]}]},
+                                # Extra bars (double_bar_chance) come on top; xp is per smelt.
+                                {"output_qty": 1 + sm["double"], "xp": sm["xp"], "ticks": sm["ticks"],
+                                 "materials": sm["ores"]}]},
                             assumptions=["ores from a metal bank or ore box, no trips"]))
     return rows

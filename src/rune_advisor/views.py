@@ -19,7 +19,8 @@ Progress = Callable[[float, float, str], None]
 # Typical seconds per step (desktop, one maxed-ish ironman, 2026-11-22). They only weight the progress bar: done and
 # total are in these seconds, so a caller can tell the time left from how fast a run gets through them (app.js).
 STEP_SECONDS = {"priors": 67.0, "quest_points": 0.7, "milestones": 3.5, "runescore": 8.5, "gear": 1.2,
-                "free_xp": 0.9, "task_sets": 25.0, "collection_logs": 0.7, "dnd_tokens": 0.5, "ranking": 0.2}
+                "free_xp": 0.9, "task_sets": 25.0, "collection_logs": 0.7, "dnd_tokens": 0.5, "scrolls": 15.0,
+                "ranking": 0.2}
 DEFAULT_STEP_SECONDS = 0.2
 
 
