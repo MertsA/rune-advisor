@@ -138,3 +138,28 @@ def test_collections_are_hand_ins(monkeypatch):
     made = {r["output"]: r for r in catalogue.collection_recipes()}
     assert made["chronotes"]["output_qty"] == 500 and made["Box"]["output_qty"] == 2
     assert made["Box"]["materials"] == [["A", 1.0], ["B", 1.0]] and made["Box"]["level"] == 77
+
+
+@pytest.mark.parametrize("hotspot,level,guide", [("Armarium debris", 93, 125_000), ("Keshik tower debris", 95, 146_500),
+                                                  ("Destroyed golem", 98, 172_000), ("Hellfire forge", 104, 210_000)])
+def test_archaeology_loop_near_the_training_guide(hotspot, level, guide):
+    """The training guide's rates (elder rune mattock, all upgrades, archaeologist's outfit; data/wiki_rates.json)
+    against the full loop with time sprites: excavate, screen the soil, restore what's found, top up materials."""
+    from rune_advisor.mechanics import archaeology
+
+    p = _player(Archaeology=level)
+    p.tools["mattock"] = "Elder rune"
+    p.inventories = {"BANK": {f"Archaeologist's {x}": 1 for x in ("hat", "jacket", "trousers", "gloves", "boots")}}
+    rows = [r for r in archaeology.method_rows(p) if r["method"].startswith(f"{hotspot}: excavate")
+            and not r.get("afk") and r["level_max"] == level + 4]
+    assert rows and 0.65 < rows[0]["xp_per_hour"] / guide < 1.25
+
+
+def test_screening_is_part_of_excavation():
+    from rune_advisor.mechanics import archaeology
+
+    p = _player(Archaeology=100)
+    p.vars = {"ARCH_SOIL_BOX_UPGRADE": 3}
+    assert archaeology.soil_box(p) == 500 + archaeology.SOIL_BACKPACK
+    dig = next(r for r in archaeology.method_rows(p) if r["method"].startswith("Acropolis debris (simulated"))
+    assert "Saltwater mud" not in dig["yields"] and "soil screened as it piles up" in dig["assumptions"]
