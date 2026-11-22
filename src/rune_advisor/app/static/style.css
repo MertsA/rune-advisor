@@ -38,6 +38,7 @@ button.link { background: none; border: none; color: var(--accent); text-decorat
 .checks label { flex-direction: row; gap: .3rem; color: var(--ink); font-size: .85rem; }
 .status { margin: .75rem 0 0; min-height: 1.4rem; display: flex; gap: .75rem; align-items: center; color: var(--muted); }
 progress { width: 14rem; }
+.eta { margin-left: 0.5rem; color: var(--muted); }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th, td { text-align: right; padding: .25rem .6rem; border-bottom: 1px solid var(--line); }
 th:first-child, td:first-child { text-align: left; }

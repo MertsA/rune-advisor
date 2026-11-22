@@ -14,7 +14,49 @@ from .recommend.guide import GuideEntry, afk_skills
 from .recommend.guide import guide as make_guide
 from .recommend.tracks import ALL_TRACKS
 
-Progress = Callable[[int, int, str], None]
+Progress = Callable[[float, float, str], None]
+
+# Typical seconds per step (desktop, one maxed-ish ironman, 2026-11-22). They only weight the progress bar: done and
+# total are in these seconds, so a caller can tell the time left from how fast a run gets through them (app.js).
+STEP_SECONDS = {"priors": 67.0, "quest_points": 0.7, "milestones": 3.5, "runescore": 8.5, "gear": 1.2,
+                "free_xp": 0.9, "task_sets": 25.0, "collection_logs": 0.7, "dnd_tokens": 0.5, "ranking": 0.2}
+DEFAULT_STEP_SECONDS = 0.2
+
+
+class Steps:
+    """A run's steps on one progress bar, each weighted by STEP_SECONDS; slow loops inside a step move the bar
+    through it (Context.report)."""
+
+    def __init__(self, ctx, progress: Progress | None, keys: list[str]):
+        self.ctx, self.progress = ctx, progress
+        self.total = sum(STEP_SECONDS.get(k, DEFAULT_STEP_SECONDS) for k in keys)
+        self.done = 0.0
+
+    def run(self, key: str, message: str, fn: Callable):
+        weight = STEP_SECONDS.get(key, DEFAULT_STEP_SECONDS)
+        if self.progress is None:
+            return fn()
+        start = self.done
+        self.progress(start, self.total, message)
+        outer, self.ctx._report = self.ctx._report, \
+            (lambda i, n: self.progress(start + weight * i / n, self.total, message))
+        try:
+            return fn()
+        finally:
+            self.ctx._report = outer
+            self.done = start + weight
+
+
+def _keys(ctx, names: list[str]) -> list[str]:
+    """The steps of planning these tracks: the category priors first when an achievement track needs them."""
+    priors = ctx._category_priors is None and any(n in ("runescore", "task_sets", "quest_points") for n in names)
+    return (["priors"] if priors else []) + list(names)
+
+
+def _priors(ctx, steps: Steps) -> None:
+    from .recommend.plans import category_priors
+    if ctx._category_priors is None:
+        steps.run("priors", "estimating typical achievement costs", lambda: category_priors(ctx))
 
 
 def charge_steps(ctx, combat_hours: float, session: float | None = None) -> list[str]:
@@ -36,14 +78,14 @@ def guide_sections(ctx, names: list[str] | None = None, mood: str | None = None,
     """`radv guide`: each track's entries, best first. Candidates are built track by track so a caller can show progress."""
     from .player import rock_halved_skills
     names = names or list(ALL_TRACKS)
+    steps = Steps(ctx, progress, _keys(ctx, names) + ["ranking"])
+    if "priors" in _keys(ctx, names):
+        _priors(ctx, steps)
     per_track = {}
-    for i, n in enumerate(names):
-        if progress:
-            progress(i, len(names), f"planning {n}")
-        per_track[n] = ALL_TRACKS[n].candidates(ctx)
-    if progress:
-        progress(len(names), len(names), "ranking")
-    return make_guide(per_track, mood, session, afk_skills(ctx), rock_halved_skills(ctx.player))
+    for n in names:
+        per_track[n] = steps.run(n, f"planning {n}", lambda n=n: ALL_TRACKS[n].candidates(ctx))
+    return steps.run("ranking", "ranking", lambda: make_guide(per_track, mood, session, afk_skills(ctx),
+                                                                rock_halved_skills(ctx.player)))
 
 
 def next_picks(ctx, hours: float, mood: str | None = None, replan: bool = False, max_replans: int | None = None,
@@ -53,11 +95,15 @@ def next_picks(ctx, hours: float, mood: str | None = None, replan: bool = False,
     from .recommend.picker import candidates_for_picking, pick, pick_replanned
 
     def build(c, tracks=None):
-        # The lamps and points go where free_xp says; the other tracks plan their levels without them.
-        if progress:
-            progress(0, 0, "planning " + (", ".join(tracks) if tracks else "all tracks"))
-        return make_guide(candidates_for_picking(c, ALL_TRACKS, tracks), mood, hours, afk_skills(c),
-                          rock_halved_skills(c.player))
+        # The lamps and points go where free_xp says; the other tracks plan their levels without them. A re-plan
+        # after a pick (--replan) starts a new bar for the tracks it re-plans.
+        names = list(tracks or ALL_TRACKS)
+        steps = Steps(c, progress, _keys(c, names))
+        if "priors" in _keys(c, names):
+            _priors(c, steps)
+        found = candidates_for_picking(c, ALL_TRACKS, tracks,
+                                       step=lambda n, fn: steps.run(n, f"planning {n}", fn))
+        return make_guide(found, mood, hours, afk_skills(c), rock_halved_skills(c.player))
 
     return pick_replanned(ctx, build, hours, max_replans) if replan else pick(build(ctx), hours)
 

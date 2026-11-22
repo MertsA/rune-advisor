@@ -26,7 +26,8 @@ class _Milestones:
 
     def candidates(self, ctx: Context) -> list[Candidate]:
         p, out = ctx.player, []
-        for skill, s in p.skills.items():
+        for i, (skill, s) in enumerate(p.skills.items()):
+            ctx.report(i, len(p.skills))
             cap = level_cap(skill, p.members)
             upcoming = [lvl for lvl in sorted(MILESTONE_VALUE) if s.level < lvl <= cap]
             # Always include the 99 (or real cap) even if it's not among the next few.

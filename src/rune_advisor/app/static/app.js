@@ -53,18 +53,62 @@ async function runJob(view, options, refresh) {
   cancel.addEventListener("click", () => api("POST", `/api/jobs/${job.id}/cancel`, {}).catch(() => {}));
   const bar = h("progress", { max: 1, value: 0, "aria-label": "planning progress" });
   const msg = h("span", {}, "starting");
-  setStatus(view, bar, msg, cancel);
+  const eta = h("span", { class: "eta" });
+  setStatus(view, bar, msg, eta, cancel);
+  const key = timingKey(view, options);
+  const clock = { key, prev: readTiming(key), start: null, last: 0, done: 0, at: 0, marks: {} };
   for (;;) {
     const j = await api("GET", `/api/jobs/${job.id}`);
     if (state.job[view] !== job.id) throw new Error("superseded");
     const p = j.progress;
     if (p.total) { bar.max = p.total; bar.value = p.done; } else { bar.removeAttribute("value"); }
     msg.textContent = `${p.message || j.state}  (${j.elapsed}s)`;
-    if (j.state === "done") { state.job[view] = null; return j; }
+    eta.textContent = timeLeft(clock, p, j.elapsed);
+    if (j.state === "done") {
+      state.job[view] = null;
+      if (!j.cached) { clock.last = j.elapsed; saveTiming(clock); }
+      return j;
+    }
     if (j.state === "error") { state.job[view] = null; throw new Error(j.error); }
     if (j.state === "cancelled") { state.job[view] = null; throw new Error("cancelled"); }
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
+}
+
+// Time left. The planner's progress is in typical seconds of work (views.STEP_SECONDS); better still is the last
+// run of the same request in this browser: when each step started and when it ended (remembered in
+// localStorage, a convenience: without it the typical seconds stand in, scaled by this run's pace past halfway). Times count from the first measured step,
+// so loading the player (cached on a second run) doesn't skew them.
+function timingKey(view, options) { return `ra-timing:${view}:${state.player}:${JSON.stringify(options || {})}`; }
+function readTiming(key) {
+  try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { return null; }
+}
+function saveTiming(clock) {
+  if (clock.start === null) return;
+  try { localStorage.setItem(clock.key, JSON.stringify({ end: clock.last - clock.start, marks: clock.marks })); } catch (e) { /* storage off */ }
+}
+
+function timeLeft(clock, p, elapsed) {
+  if (!p.total) return ""; // a step with no measure yet (loading the player)
+  if (clock.start === null) clock.start = elapsed;
+  const t = elapsed - clock.start;
+  clock.last = elapsed;
+  if (!(p.message in clock.marks)) clock.marks[p.message] = t;
+  if (p.done !== clock.done) Object.assign(clock, { done: p.done, at: t });
+  let left;
+  const prev = clock.prev;
+  if (prev && p.message in prev.marks && prev.end > 0) {
+    // As fast as last time so far? Scale the rest of last run by how long it took to get here.
+    const then = prev.marks[p.message], now = clock.marks[p.message];
+    const scale = then > 5 && now > 5 ? now / then : 1;
+    left = (prev.end - then) * scale - (t - now);
+  } else {
+    // First run: the typical seconds as they are until half is done (early steps vary too much to scale by).
+    const rate = p.done > 0.5 * p.total && clock.at > 0 ? clock.at / p.done : 1;
+    left = (p.total - p.done) * rate - (t - clock.at);
+  }
+  if (left < 5) return "almost done";
+  return left < 90 ? `about ${Math.round(left / 5) * 5}s left` : `about ${Math.round(left / 60)} min left`;
 }
 
 async function load(view, options, refresh) {

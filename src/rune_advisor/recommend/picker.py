@@ -31,14 +31,15 @@ def without_choice(pool):
     return ResourcePool([r for r in pool.resources if r.skills is not None or (r.bonus and not r.spend_first)])
 
 
-def candidates_for_picking(ctx, tracks: dict, names=None) -> dict:
+def candidates_for_picking(ctx, tracks: dict, names=None, step=None) -> dict:
     """Each track's candidates for the picker: free_xp sees the whole pool, every other track the pool without
-    the choice resources free_xp hands out (see without_choice)."""
+    the choice resources free_xp hands out (see without_choice). `step(name, fn)` runs each track (views.Steps)."""
     pool, out = ctx.resources, {}
+    step = step or (lambda _name, fn: fn())
     try:
         for n in (names or tracks):
             ctx.resources = pool if n in FIRST_TRACKS else without_choice(pool)
-            out[n] = tracks[n].candidates(ctx)
+            out[n] = step(n, lambda n=n: tracks[n].candidates(ctx))
     finally:
         ctx.resources = pool
     return out

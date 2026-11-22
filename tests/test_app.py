@@ -229,7 +229,10 @@ def test_guide_view_shape(ctx):
     e = track["entries"][0]
     assert e["headline"] == "Heralds of Crimson"
     assert {"hours", "play_hours", "value", "why", "left", "unsure", "steps", "tags", "confidence", "prep"} <= set(e)
-    assert seen and seen[0][2].startswith("planning")
+    assert seen and seen[-1][2] == "ranking"
+    # The bar is in typical seconds (views.STEP_SECONDS): it only moves forward, and every step fits in the total.
+    dones = [d for d, _, _ in seen]
+    assert dones == sorted(dones) and all(0 <= d <= t for d, t, _ in seen)
     only_short = views.guide_view(ctx, ["quest_points"], mood="short")["tracks"][0]["entries"]
     assert all("short" in x["tags"] for x in only_short)
 

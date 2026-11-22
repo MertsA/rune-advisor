@@ -22,10 +22,11 @@ class _TaskSets:
 
     def candidates(self, ctx: Context) -> list[Candidate]:
         p, out = ctx.player, []
-        for a in p.achievements.values():
+        todo = [a for a in p.achievements.values() if not a.completed
+                and sum(1 for t in a.requirements if t.get("kind") == "achievement" and t.get("achievement")) >= MIN_SET_SIZE]
+        for i, a in enumerate(todo):
+            ctx.report(i, len(todo))
             subs = [t for t in a.requirements if t.get("kind") == "achievement" and t.get("achievement")]
-            if a.completed or len(subs) < MIN_SET_SIZE:
-                continue
             if not p.members and a.name in ctx.members_only_achievements:
                 continue
             plan = achievement_plan(ctx, a.name)

@@ -186,6 +186,8 @@ class Context:
     achievement_descriptions: dict[str, str] = field(default_factory=dict)
     _combat_style: tuple[str, float] | None = field(default=None, repr=False)
     _category_priors: dict[str, tuple[float, int]] | None = field(default=None, repr=False)
+    # Progress within the step being run (views.Steps): slow loops call report(i, n) as they go.
+    _report: Callable[[int, int], None] | None = field(default=None, repr=False)
     _activities: Activities | None = field(default=None, repr=False)
 
     @property
@@ -247,6 +249,11 @@ class Context:
                 return (f"side option: {m['method']} (~{rate:,.0f} xp/h{pct}) also drops "
                         + "; ".join(d.describe() for d in useful[:3]))
         return None
+
+    def report(self, done: int, total: int) -> None:
+        """How far a slow loop is (views.Steps turns it into the progress bar); nothing when no one is watching."""
+        if self._report is not None and total:
+            self._report(done, total)
 
     def level_plan(self, skill: str, target_level: int) -> LevelPlan:
         p = self.player

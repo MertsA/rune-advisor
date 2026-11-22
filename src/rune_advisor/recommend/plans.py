@@ -39,9 +39,9 @@ def category_priors(ctx: Context) -> dict[str, tuple[float, int]]:
     if ctx._category_priors is None:
         ctx._category_priors = {}  # while computing, fallbacks use the flat guess (no recursion)
         by_cat: dict[str, list[float]] = {}
-        for a in ctx.player.achievements.values():
-            if a.completed or not a.category:
-                continue
+        todo = [a for a in ctx.player.achievements.values() if not a.completed and a.category]
+        for i, a in enumerate(todo):
+            ctx.report(i, len(todo))  # the open ones only: they take the time
             plan = achievement_plan(ctx, a.name)
             # Only the activity/quest part: a flag is an activity, and level grinds would swamp the median.
             activity = plan.hours - plan.skill_hours

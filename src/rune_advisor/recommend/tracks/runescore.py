@@ -17,9 +17,9 @@ class _RuneScore:
 
     def candidates(self, ctx: Context) -> list[Candidate]:
         out = []
-        for a in ctx.player.achievements.values():
-            if a.completed or a.runescore <= 0:
-                continue
+        todo = [a for a in ctx.player.achievements.values() if not a.completed and a.runescore > 0]
+        for i, a in enumerate(todo):
+            ctx.report(i, len(todo))
             if not ctx.player.members and a.name in ctx.members_only_achievements:
                 continue
             plan = achievement_plan(ctx, a.name)
