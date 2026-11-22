@@ -188,6 +188,7 @@ ASSUMED_RATES = {
     "daily": (1 / 24, "an NPC's hand-out or a repeatable activity: once a day"),
     "wave": (1.0, "a minigame's last wave: one run an hour"),
     "random": (1.0, "a random event while skilling: one an hour"),
+    "chest": (4.0, "a chest (keys, resets): 4 opens an hour"),
 }
 DAILY_KINDS = {"npc", "other"}  # drop_source_kinds.json kinds costed as once a day (calendar time, a minute of play)
 ONE_OFF_KINDS = {"quest", "achievement"}  # rewards once: no repeatable source
@@ -218,6 +219,8 @@ def assumed_rate(player: PlayerState, source: str, style: tuple[str, float]) -> 
         return n, skill, 0.0, f"a monster with no stats: {n:g} kills an hour"
     if m is None or kind in ("scenery", "creature", "random") or kind in DAILY_KINDS:
         key = "daily" if kind in DAILY_KINDS else kind if kind in ("scenery", "creature", "random") else "scenery"
+        if key == "scenery" and "chest" in source.lower():
+            key = "chest"  # a chest wants a key or a reset: not a node to hit 60 times an hour
         n, why = ASSUMED_RATES[key]
         return n, skill, 0.0, why
     if (m.get("members", True) and not player.members) or (m.get("slayer_level") or 0) > player.level("Slayer"):

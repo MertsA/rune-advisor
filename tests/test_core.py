@@ -1366,7 +1366,8 @@ def test_rituals_farming_archaeology_sims():
     assert 6 < farming.expected_yield(p, ranarr) < 9  # 3 lives + supercompost, keep chance at 99
     p.tools["mattock"] = "Elder rune"
     golem = next(h for h in archaeology.hotspot_rates(p) if h["hotspot"] == "Destroyed golem")
-    assert "Elder Rune" in golem["mattock"] and "assumed" not in golem["mattock"] and golem["xp_per_hour"] > 50_000
+    assert golem["mattock"].startswith("Elder Rune mattock,") and "mattock, assumed" not in golem["mattock"]
+    assert golem["xp_per_hour"] > 20_000  # excavation only: restoring is a workbench recipe
 
 
 def test_ritual_alteration_glyphs():

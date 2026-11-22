@@ -23,6 +23,10 @@ from ..gear import best_style
 from ..models import PlayerState
 from ..boosts import STAFF_RUNES, best_urn, prayer_urn, urns
 from ..mechanics.processing import capped, effective
+
+# Workbench recipes whose own speed holds (not capped at the skill's rate): restoring is fast and fed by gathering,
+# so the gathering, costed separately, is what limits it (Context._recipe_band_run).
+UNCAPPED_FACILITIES = {"Archaeologist's workbench"}
 from ..resources import LevelPlan, ResourcePool, plan_level
 from ..sources.wiki import QuestInfo
 from ..xp import level_at_xp, level_cap, xp_at
@@ -44,6 +48,9 @@ class Banded:
     # Hours a consumable boost (a familiar, juju) took off bands that had no recipe method, against their plain
     # rate (Context._boosted_run): plans that keep the plain grind hours subtract it.
     boost_saving: float = 0.0
+    # Hours a workbench recipe took off gathering bands (Context._recipe_band_run: restoring artefacts instead of
+    # only excavating), against their plain rate: plans subtract it from their hours and grind.
+    recipe_saving: float = 0.0
 
     @property
     def steps(self) -> list[str]:
@@ -475,6 +482,15 @@ class Context:
             run = choose_run(methods, seg, stock, group, self.player.name, self.player.members)
             if self.player.ironman and run is not None and not run.covered:
                 run = self._cheapest_to_gather(methods, seg, stock, group) or run
+            plain_hours = None
+            if run is None and self.player.ironman and \
+                    (made := self._recipe_band_run(methods, seg, stock, group,
+                                                   plain_hours := self.cost.hours_for_xp(skill, int(a), int(b)))):
+                # A gathering band where a workbench recipe fed by gathering (restoring artefacts dug up and
+                # materials from caches) beats gathering alone: the band is that recipe; its inputs are gathered
+                # (Context._gather, which also counts the gathering's xp in this skill toward the goal).
+                run = made
+                out.recipe_saving += plain_hours - seg / run.rate
             if run is None and (twins := self.cost.boosted_methods(skill, level)):
                 # A gathering band (no recipe): a familiar or juju kept up, where it beats the plain rate with its
                 # consumables costed.
@@ -521,6 +537,31 @@ class Context:
                 best = (per_xp, run)
         return best[1] if best and best[0] < float("inf") else None
 
+    def _recipe_band_run(self, methods: list[dict], xp: float, stock: dict[str, int],
+                         group: dict[str, dict[str, int]] | None, plain_hours: float) -> MaterialRun | None:
+        """For a band with no recipe method (gathering: Archaeology's excavation): the workbench recipe whose run,
+        with what the stock lacks gathered, beats `plain_hours`. The gathering's xp in this skill counts (excavating
+        the artefacts is Archaeology too), as Context._gather will."""
+        if not methods:
+            return None
+        skill = row_skills(methods[0])[0]
+        best = None
+        for m in self._recipe_methods(methods, xp):
+            if not m.get("uncapped"):
+                continue  # only recipes whose speed is their own (others are capped at the band's gathering rate)
+            run = material_run(m, xp, stock, group, self.player.name, self.player.members)
+            if run is None:
+                continue
+            hours, same = xp / run.rate, 0.0
+            for name, n in run.shortfall.items():
+                src = self.gatherer.complete_source(name)
+                hours += n * self.gatherer.net_cost(src) if src else float("inf")
+                same += n * src.xp_per_unit.get(skill, 0) if src else 0
+            hours *= xp / (xp + same)
+            if hours < plain_hours and (best is None or hours < best[0]):
+                best = (hours, run)
+        return best[1] if best else None
+
     def _boosted_run(self, twins: list[dict], xp: float, stock: dict[str, int],
                      group: dict[str, dict[str, int]] | None, plain_hours: float) -> MaterialRun | None:
         """The consumable-boost twin (consumables.boosted_rows) that gets `xp` cheapest, counting the time to make what
@@ -549,16 +590,24 @@ class Context:
         level = self.player.level(skill) if level < self.player.level(skill) else level
         cap = self.cost.rate(skill, level)
         rows = []
-        for r in catalogue():
+        extra = []
+        if skill == "Archaeology":  # restoring what each hotspot digs up, mixed as it's found
+            from ..mechanics.archaeology import restoration_mixes
+            extra = restoration_mixes(level)
+        for r in catalogue() + extra:
             if r["skill"] != skill or r.get("conversion") or r.get("daemonheim") or r["level"] > level \
                     or not _usable(r, self.player):  # Daemonheim recipes: inside a dungeon only, no training
                 continue
             r = effective(self.player, r)
-            rate = capped(r["xp"] * 3600 / _recipe_seconds(r, self.player), r, cap)
+            free = r.get("facility") in UNCAPPED_FACILITIES
+            rate = r["xp"] * 3600 / _recipe_seconds(r, self.player)
+            rate = rate if free else capped(rate, r, cap)
             if rate < MIN_RATE_SHARE * self.cost.baseline_rate(skill, level):
                 continue
-            rows.append({"skill": skill, "method": f"{r['output']} (wiki recipe{', Shrine of Inanna' if r.get('boost') else ''})", "level_min": r["level"],
-                         "xp_per_hour_low": rate, "xp_per_hour_high": None,
+            label = (f"restore what {r['mix']} digs up (workbench)" if r.get("mix")
+                     else f"{r['output']} (wiki recipe{', ' + r['boost'] if r.get('boost') else ''})")
+            rows.append({"skill": skill, "method": label, "level_min": r["level"],
+                         "xp_per_hour_low": rate, "xp_per_hour_high": None, **({"uncapped": True} if free else {}),
                          "recipe": {"output": r["output"], "variants": [
                              {"output_qty": 1, "xp": r["xp"] / r["output_qty"], "ticks": r["ticks"],
                               "materials": [[n, q / r["output_qty"]] for n, q in r["materials"]]}]}})
@@ -605,6 +654,8 @@ class Context:
             steps += rest_runs.steps
             if not mix.xp:  # with a bank mix, the hours above already come from the runs
                 plan.hours -= rest_runs.boost_saving
+            plan.hours -= rest_runs.recipe_saving  # restoring at the workbench, not excavating, for those bands
+            plan.grind_hours -= rest_runs.recipe_saving
             plan.materials_short = rest_runs.shortfall
             for name, n in rest_runs.used.items():
                 plan.items_used[name] = plan.items_used.get(name, 0) + n

@@ -238,6 +238,7 @@ class Gatherer:
         self._provisional: dict[str, tuple[Source | None, frozenset[str]]] = {}  # answers valid while those stay open
         self._training_rate: float | None = None
         self._activities: frozenset[str] | None = None
+        self._sift: dict[str, list[dict]] | None = None
         self._sim_memo: dict[str, Source | None] = {}
         self._boost_memo: dict[str, Source | None] = {}
         self._spots_added: set[str] = set()
@@ -315,6 +316,26 @@ class Gatherer:
         if self._making.intersection(uses):
             return float("inf")
         return 1.0 + sum(n * self.consumable_hours(i) for i, n in uses.items())
+
+    def _sift_recipes(self, item: str) -> list[dict]:
+        """Screening soil for `item` (mechanics/archaeology.sift_yields at the player's level): a recipe per soil that
+        can give it, a heap in, the expected amount out."""
+        if self._sift is None:
+            from ..mechanics import archaeology
+
+            p = self.ctx.player
+            level = p.level("Archaeology")
+            self._sift = {}
+            if p.members and level > 1:
+                for soil in sorted(archaeology.soils()):
+                    for out, per in archaeology.sift_yields(p, soil, level).items():
+                        if per > 0:
+                            self._sift.setdefault(out, []).append({
+                                "skill": "Archaeology", "output": out, "output_qty": per, "level": 1,
+                                "xp": archaeology.sift_xp(level), "ticks": float(archaeology.SIFT_TICKS),
+                                "materials": [[soil, 1.0]], "members": True, "quests": [], "other_skills": [],
+                                "facility": "Screening station", "conversion": True, "sift": soil})
+        return self._sift.get(item, [])
 
     def _modelled_activities(self) -> frozenset[str]:
         """Activities a guide or simulated row rates (a hotspot, a tree): their drop pages need no guessed rate."""
@@ -524,7 +545,7 @@ class Gatherer:
             hours, how, xp, calendar = earned
             flag = "assumed earning rate" if "assum" in how.lower() else None
             options.append(Source("earn", how, hours, xp_per_unit=xp, calendar_per_unit=calendar, flag=flag))
-        for r in by_output().get(item, []):
+        for r in by_output().get(item, []) + self._sift_recipes(item):
             if not _usable(r, p, levels=False) or r.get("daily"):
                 continue  # daily-capped conversions (Desert amulets) aren't an hourly source
             unlock = {s: lvl for s, lvl, _ in gates(r, p)}
@@ -864,6 +885,11 @@ class Gatherer:
                 if r["skill"] == "Smithing" and where == "Anvil" and r["xp"] and respect.open_rewards(self.ctx.player):
                     pct = respect.percent_for(self.ctx.player, r["xp"] * actions)
                     earns = f"; at the Artisans' Workshop that is +{pct:.1f}% respect" if pct >= 0.05 else ""
+                if r.get("sift"):  # screening soil (mechanics/archaeology.sift_yields)
+                    g.steps.append(f"screen {actions:,} {r['sift']} for {n:,} {item} (~{actions * _recipe_seconds(r, self.ctx.player) / 3600:.1f}h)"
+                                   + (f", gathering {', '.join(f'{v:,} {k}' for k, v in need.items())}" if need else ""))
+                    self._merge(g, self._plan(need, stock, extra))
+                    continue
                 if r.get("collection"):  # an Archaeology collection handed in (catalogue.collection_recipes)
                     g.steps.append(f"hand in the {r['collection']} collection {actions:,}x for {n:,} {item}"
                                    + (f", gathering {', '.join(f'{v:,} {k}' for k, v in need.items())}" if need else ""))

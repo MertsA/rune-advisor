@@ -25,10 +25,10 @@ def _player(**levels) -> PlayerState:
 @pytest.fixture
 def world(monkeypatch):
     """A small drop world: a scenery chest, an NPC hand-out, a gift item, a quest reward, an event."""
-    sources = {"Old chest": [["Zq widget", 0.5, 2.0, 0]], "Nice NPC": [["Zq gadget", 1.0, 10.0, 0]],
+    sources = {"Old crate": [["Zq widget", 0.5, 2.0, 0]], "Nice NPC": [["Zq gadget", 1.0, 10.0, 0]],
                "Gift box": [["Zq sprocket", 0.25, 4.0, 0]], "Some Quest": [["Zq trinket", 1.0, 1.0, 0]],
                "Santa's Grotto": [["Zq bauble", 1.0, 1.0, 0]], "Box seller": [["Gift box", 1.0, 1.0, 0]]}
-    kinds = {"Old chest": "scenery", "Nice NPC": "npc", "Gift box": "item", "Some Quest": "quest",
+    kinds = {"Old crate": "scenery", "Nice NPC": "npc", "Gift box": "item", "Some Quest": "quest",
              "Santa's Grotto": "other", "Box seller": "npc"}
     monkeypatch.setattr(drops, "tables", lambda: {"sources": sources, "monsters": {}, "bosses": []})
     monkeypatch.setattr(drops, "source_kinds", lambda: kinds)
@@ -44,7 +44,7 @@ def world(monkeypatch):
 
 def test_rates_by_kind(world):
     p = world.ctx.player
-    assert drops.assumed_rate(p, "Old chest", STYLE)[0] == drops.ASSUMED_RATES["scenery"][0]
+    assert drops.assumed_rate(p, "Old crate", STYLE)[0] == drops.ASSUMED_RATES["scenery"][0]
     assert drops.assumed_rate(p, "Nice NPC", STYLE)[0] == pytest.approx(1 / 24)  # once a day
     assert drops.assumed_rate(p, "Some Quest", STYLE) is None  # rewards once
     assert drops.assumed_rate(p, "Gift box", STYLE) is None  # opened, not farmed
@@ -64,8 +64,8 @@ def test_flagged_sources_keep_items_available_and_are_tallied(world):
     assert g.source("Zq trinket") is None and g.source("Zq bauble") is None
     g.plan({"Zq widget": 10, "Zq gadget": 5})
     used = {where for where in g.flag_use}
-    assert any(w.startswith("Old chest") for w in used) and any("Nice NPC" in w for w in used)
-    hours, goals = next(v for k, v in g.flag_use.items() if k.startswith("Old chest"))
+    assert any(w.startswith("Old crate") for w in used) and any("Nice NPC" in w for w in used)
+    hours, goals = next(v for k, v in g.flag_use.items() if k.startswith("Old crate"))
     assert hours == pytest.approx(10 * widget.hours_per_unit) and goals == {"Zq widget", "Zq gadget"}
 
 
@@ -101,17 +101,32 @@ def test_dungeoneering_tokens_cheapest_way(monkeypatch):
     assert xp == {"Archaeology": pytest.approx(10_000 / per_box)}
 
 
-def test_hotspots_yield_artefacts_and_restoring_nets_materials(monkeypatch):
+def test_excavation_soil_caches_and_screening(monkeypatch):
+    """Hotspots dig materials, damaged artefacts and soil; caches one material, soil only inside a dig site;
+    screening follows the Screening page's formula; restoring is a workbench mix of what a hotspot digs up."""
     from rune_advisor.mechanics import archaeology
 
-    recipe = {"skill": "Archaeology", "output": "Pot", "output_qty": 1.0, "level": 1, "xp": 100.0, "ticks": 10.0,
-              "materials": [["Pot (damaged)", 1.0], ["Clay", 10.0], ["Rare dust", 2.0]], "members": True,
-              "quests": [], "other_skills": [], "facility": ""}
-    monkeypatch.setattr(archaeology, "restoration", lambda d: recipe if d == "Pot (damaged)" else None)
-    h = {"materials": {"Clay": 100.0, "Sand": 50.0}, "artefacts": {"Pot (damaged)": 4.0, "Vase (damaged)": 1.0}}
-    yields, consumes = archaeology.restoring(h)
-    assert yields == {"Pot": 4.0, "Vase (damaged)": 1.0, "Clay": 60.0, "Sand": 50.0}  # 40 clay restored into pots
-    assert consumes == {"Rare dust": 8.0}  # not from this hotspot: used up from elsewhere
+    p = _player(Archaeology=100)
+    p.tools["mattock"] = "Elder rune"
+    hot = {h["hotspot"]: h for h in archaeology.hotspot_rates(p)}["Acropolis debris"]
+    assert {"Amphora (damaged)", "Rod of Asclepius (damaged)", "Keramos", "Saltwater mud"} <= set(hot["yields"])
+    e = archaeology._excavation(p, 100, sprites=False)
+    assert hot["yields"]["Saltwater mud"] == pytest.approx(e["hits"] * archaeology.SOIL_CHANCE)
+    assert e["precision"] == 70 + 8  # Elder rune + four qualification upgrades (assumed)
+    p.boosts = {"mattock_upgrades": 1}
+    assert archaeology._excavation(p, 100, sprites=False)["precision"] == 72
+    monkeypatch.setattr(archaeology, "caches", lambda: [
+        {"cache": "Material cache (keramos) at Everlight Dig Site", "level": 42, "material": "Keramos",
+         "dig_site": "Everlight Dig Site", "soil": "Saltwater mud"},
+        {"cache": "Material cache (keramos)", "level": 42, "material": "Keramos", "dig_site": None, "soil": None}])
+    inside, outside = archaeology.cache_rates(p)
+    assert set(inside["yields"]) == {"Keramos", "Saltwater mud"} and set(outside["yields"]) == {"Keramos"}
+    # Screening at 100: 10,000 x floor(31 + 99 x (140 - 31) / 98) = 1,410,000 out of 2,550,000.
+    assert archaeology.sift_chance(p) == pytest.approx(1_410_000 / 2_550_000)
+    assert sum(archaeology.sift_yields(p, "Saltwater mud").values()) == pytest.approx(archaeology.sift_chance(p))
+    mix = next(m for m in archaeology.restoration_mixes(100) if m["mix"] == "Acropolis debris")
+    shares = dict(mix["materials"])
+    assert shares["Amphora (damaged)"] == pytest.approx(0.5) and shares["Rod of Asclepius (damaged)"] == pytest.approx(0.5)
 
 
 def test_collections_are_hand_ins(monkeypatch):
