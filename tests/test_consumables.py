@@ -147,12 +147,22 @@ def test_other_skills_get_their_boosts():
     rows = consumables.boosted_rows(p)
     by = {(r["skill"], r["boost"]) for r in rows}
     assert ("Fishing", "Granite lobster") in by and ("Thieving", "Magpie") in by
-    # Porters: a charge per item, so a sign per 50 materials at the hotspot's rate (no more 25% of hits lost).
-    arch = next(r for r in rows if r["skill"] == "Archaeology" and r["boost"] == porter)
-    assert arch["consumes"]["Sign of the porter VII"] == pytest.approx(sum(arch["yields"].values()) / 50)
-    plain = next(r for r in sim_rows(p, "Archaeology") if r["method"] == arch["base_method"]
-                 and r["level_min"] == arch["level_min"])
-    assert arch["xp_per_hour"] > plain["xp_per_hour"]
+    # Porters: a charge per material (not artefacts or soil), a sign per 50. They save a bank trip a backpack at a
+    # cache out in the world, but only a few steps at a dig site, where deposit spots are close by.
+    arch = [r for r in rows if r["skill"] == "Archaeology" and r["boost"] == porter]
+    plain = {(r["method"], r["level_min"]): r for r in sim_rows(p, "Archaeology")}
+
+    def gain(name):
+        r = next(r for r in arch if r["base_method"].startswith(name))
+        return r["xp_per_hour"] / plain[(r["base_method"], r["level_min"])]["xp_per_hour"] - 1, r
+
+    far, r = gain("Material cache (white oak) (")
+    assert r["consumes"]["Sign of the porter VII"] == pytest.approx(r["items_per_hour"] / 50)
+    assert r["items_per_hour"] == pytest.approx(sum(r["yields"].values()))  # no soil out in the world
+    near, r = gain("Acropolis debris (simulated")
+    # Excavated materials only: the screened ones are found beside a deposit spot, no porter worn.
+    assert r["items_per_hour"] < 0.9 * sum(v for k, v in r["yields"].items() if not k.endswith("(damaged)"))
+    assert far > 0.15 and near < 0.05
 
 
 def sim_rows(p, skill):

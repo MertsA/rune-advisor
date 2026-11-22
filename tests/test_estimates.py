@@ -111,7 +111,9 @@ def test_excavation_soil_caches_and_screening(monkeypatch):
     hot = {h["hotspot"]: h for h in archaeology.hotspot_rates(p)}["Acropolis debris"]
     assert {"Amphora (damaged)", "Rod of Asclepius (damaged)", "Keramos", "Saltwater mud"} <= set(hot["yields"])
     e = archaeology._excavation(p, 100, sprites=False)
-    assert hot["yields"]["Saltwater mud"] == pytest.approx(e["hits"] * archaeology.SOIL_CHANCE)
+    # Trips to a deposit spot (every 27 items, 6 s) take a little off the hits.
+    hits = hot["yields"]["Saltwater mud"] / archaeology.SOIL_CHANCE
+    assert 0.95 * e["hits"] < hits < e["hits"]
     assert e["precision"] == 70 + 8  # Elder rune + four qualification upgrades (assumed)
     p.boosts = {"mattock_upgrades": 1}
     assert archaeology._excavation(p, 100, sprites=False)["precision"] == 72

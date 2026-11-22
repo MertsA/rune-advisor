@@ -5,7 +5,13 @@ Excavation only: restoring an artefact is a workbench recipe (the recipe catalog
 materials), and screening soil a recipe the gatherer adds (`sift_yields`). The user's observation (2026-11-21):
 excavation plus screening usually leaves a shortfall of materials for restoring; material caches cover it.
 
-Hotspots: the AFK method's 1,000-1,175 hits an hour (average used), less an eighth for banking without a porter.
+Hotspots: the AFK method's 1,000-1,175 hits an hour (average used), less the time spent emptying the backpack
+(`_deposit`). The user (2026-11-21): hotspots and caches inside a dig site have material deposit spots all around, so
+a full backpack is a few steps away from storage (DEPOSIT_TRIP_SECONDS); only caches out in the world mean a bank trip
+(BANK_TRIP_SECONDS), which is where signs of the porter pay. A porter sends materials only: damaged artefacts still
+fill the backpack, and soil goes to the soil box, never the porter. Rows say how many materials they excavate an
+hour (`items_per_hour`: the porter's charges). Screened materials don't count: the screening station is next to a
+deposit spot, so nobody keeps a porter on there (the user).
 Each hit finds a material with 0.21 + 1.11% per point of the mattock's Focus (times the Honed perk), soil with
 SOIL_CHANCE independently, and adds the mattock's precision to the artefact progress: an artefact every
 hitpoints / precision hits. Precision counts the Archaeology Guild's upgrades (+2 a qualification, assumed bought
@@ -36,7 +42,9 @@ SPRITE_HITS = 1500 * SPRITE_ACTIVITY
 SPRITE_SUCCESS = 0.05
 SPRITE_FOCUS_NEEDED, SPRITE_FOCUS_PER_HIT = 40, 2  # sprite focus % for a crit, % gained a hit
 SPRITE_XP = 1.2
-NO_PORTER_SHARE = 7 / 8
+INVENTORY_SLOTS = 27  # the backpack less the soil box
+DEPOSIT_TRIP_SECONDS = 6.0  # to a material deposit spot at a dig site and back: an assumption (they're everywhere)
+BANK_TRIP_SECONDS = 60.0  # from a cache out in the world to a bank and back: an assumption
 # The Material cache page: the Archaeology level, as well as focus, raises the chance of a material, and caches give
 # "400+ materials per hour" at 80+ with an imcando mattock. The hotspot calculator has no level term; this one is
 # fitted to that figure (0.21 + 6 x 1.11% + 80 x LEVEL_SUCCESS at ~1,090 hits an hour = ~400) until recorded
@@ -101,7 +109,7 @@ def _excavation(player: PlayerState, level: int, sprites: bool) -> dict | None:
     honed = (a.get("honed") or {}).get(f"Honed {profile.perks(player, 'mattock').get('Honed', 0)}", 0)
     success = (0.21 + m.get("Focus", 0) * 0.0111 + LEVEL_SUCCESS * level
                + (SPRITE_SUCCESS if sprites else 0)) * (1 + honed / 100)
-    hits = (SPRITE_HITS if sprites else AFK_HITS) * (1 if profile.porter(player) else NO_PORTER_SHARE)
+    hits = SPRITE_HITS if sprites else AFK_HITS
     upgrades, upgrades_assumed = precision_upgrades(player, level)
     master = a.get("masteroutfitbuff", 1.0) if all(profile.has(player, piece) for piece in MASTER_OUTFIT) else 1.0
     precision = (m["Precision"] + upgrades) * master * (sprite_precision(level) if sprites else 1)
@@ -110,6 +118,14 @@ def _excavation(player: PlayerState, level: int, sprites: bool) -> dict | None:
         notes.append(f"+{upgrades} precision upgrades" + (" (assumed: one per qualification)" if upgrades_assumed else ""))
     return {"hits": hits, "success": success, "precision": precision, "find_boost": SPRITE_XP if sprites else 1,
             "boost": 1 + profile.profile(player, "Archaeology", "mattock").xp_bonus, "notes": notes}
+
+
+def _deposit(player: PlayerState, hits: float, materials_per_hit: float, artefacts_per_hit: float,
+             trip_seconds: float) -> float:
+    """Hits an hour once trips to empty the backpack are paid for: every INVENTORY_SLOTS items (materials, damaged
+    artefacts) cost a trip. With a porter the materials go straight to storage and only artefacts fill the backpack."""
+    items = (0 if profile.porter(player) else materials_per_hit) + artefacts_per_hit
+    return hits / (1 + hits * items / INVENTORY_SLOTS * trip_seconds / 3600)
 
 
 def _xp(h: dict) -> tuple[float, float]:
@@ -132,15 +148,17 @@ def hotspot_rates(player: PlayerState, level: int | None = None, sprites: bool =
             continue
         fail, succ = _xp(h)
         art = h.get("artefactxp") or 100 * fail
-        artefacts = e["hits"] / (h["hitpoints"] / e["precision"])
-        mats = e["hits"] * e["success"]
-        xp = (e["hits"] * (1 - e["success"]) * fail + mats * succ + artefacts * art) * e["find_boost"] * e["boost"]
+        # Hotspots are at dig sites: material deposit spots close by (`_deposit`).
+        hits = _deposit(player, e["hits"], e["success"], e["precision"] / h["hitpoints"], DEPOSIT_TRIP_SECONDS)
+        artefacts = hits / (h["hitpoints"] / e["precision"])
+        mats = hits * e["success"]
+        xp = (hits * (1 - e["success"]) * fail + mats * succ + artefacts * art) * e["find_boost"] * e["boost"]
         weights = sum(w for _, w in h.get("materials") or []) or 1
         art_weights = sum(w for _, w in h.get("artefacts") or []) or 1
         yields = {mat: mats * w / weights for mat, w in h.get("materials") or []}
         yields.update({art_name: artefacts * w / art_weights for art_name, w in h.get("artefacts") or []})
         if h.get("soil"):
-            yields[h["soil"]] = yields.get(h["soil"], 0) + e["hits"] * SOIL_CHANCE
+            yields[h["soil"]] = yields.get(h["soil"], 0) + hits * SOIL_CHANCE
         out.append({"hotspot": name, "level": h["level"], "xp_per_hour": xp, "artefacts_per_hour": artefacts,
                     "yields": yields, "mattock": ", ".join(e["notes"])})
     return out
@@ -166,11 +184,14 @@ def cache_rates(player: PlayerState, level: int | None = None) -> list[dict]:
         if c["level"] > level:
             continue
         fail, succ = _xp({"level": c["level"]})
-        mats = e["hits"] * e["success"]
+        # Inside a dig site a deposit spot is close by; out in the world a full backpack is a bank trip.
+        hits = _deposit(player, e["hits"], e["success"], 0.0,
+                        DEPOSIT_TRIP_SECONDS if c.get("dig_site") else BANK_TRIP_SECONDS)
+        mats = hits * e["success"]
         yields = {c["material"]: mats}
         if c.get("soil"):
-            yields[c["soil"]] = e["hits"] * SOIL_CHANCE
-        xp = (e["hits"] * (1 - e["success"]) * fail + mats * succ) * e["boost"]
+            yields[c["soil"]] = hits * SOIL_CHANCE
+        xp = (hits * (1 - e["success"]) * fail + mats * succ) * e["boost"]
         out.append({"cache": c["cache"], "level": c["level"], "xp_per_hour": xp, "yields": yields,
                     "mattock": ", ".join(e["notes"])})
     return out
@@ -328,6 +349,11 @@ def materials() -> frozenset[str]:
     return frozenset({m for h in hs.values() for m, _ in h.get("materials") or []} | {c["material"] for c in caches()})
 
 
+def _material_count(yields: dict[str, float]) -> float:
+    """Materials an hour: what a porter sends (a charge each), never damaged artefacts or soil."""
+    return sum(v for k, v in yields.items() if k in materials())
+
+
 def hand_in(player: PlayerState, level: int, restored: dict[str, float], xp: float) -> tuple[dict[str, float], float, list[str]]:
     """The loop's restored artefacts handed to collectors: chronotes at their collection value (each artefact's
     chronotes, doubled by the set bonus as collections fill: archaeology_guild.COLLECTION_FACTOR). Once every Guild
@@ -361,32 +387,34 @@ def method_rows(player: PlayerState) -> list[dict]:
     for band in bands(player, "Archaeology"):
         caches_ = []
         for c in cache_rates(player, band):
-            yields, xp, _ = screened(player, band, c["yields"], c["xp_per_hour"])
+            yields, xp, total = screened(player, band, c["yields"], c["xp_per_hour"])
             caches_.append((c, yields, xp))
             rows.append(row("Archaeology", f"{c['cache']} (simulated, {c['mattock']})", max(band, c["level"]), band + 4,
-                            xp, yields=yields, assumptions=["AFK hit rate", "depletion not modelled"]
+                            xp, yields=yields, items_per_hour=_material_count(c["yields"]) / total,
+                            assumptions=["AFK hit rate", "depletion not modelled",
+                                         "deposit spot close by" if c.get("dig_site") else "bank trip per backpack"]
                             + (["soil screened as it piles up"] if c.get("soil") or any(s in c["yields"] for s in soils()) else []),
                             activity=c["cache"].split(" at ")[0], afk=True))
         for sprites in (False, True):
             how = "time sprites, " if sprites else ""
             kind = f"time sprites at {SPRITE_ACTIVITY:.0%} activity" if sprites else "AFK hit rate"
-            dug = [(h, *screened(player, band, h["yields"], h["xp_per_hour"])[:2]) for h in hotspot_rates(player, band, sprites)]
+            dug = [(h, *screened(player, band, h["yields"], h["xp_per_hour"])) for h in hotspot_rates(player, band, sprites)]
             # Where a material the loop runs short of comes fastest: a cache, else another hotspot (rarer materials).
             best: dict[str, tuple[float, float]] = {}
-            for yields, xp in [(y, x) for _, y, x in caches_] + [(y, x) for _, y, x in dug]:
+            for yields, xp in [(y, x) for _, y, x in caches_] + [(y, x) for _, y, x, _ in dug]:
                 for m, per_hour in yields.items():
                     if not m.endswith("(damaged)") and per_hour > best.get(m, (0, 0))[0]:
                         best[m] = (per_hour, xp)
-            for h, yields, xp in dug:
+            for h, yields, xp, total in dug:
+                excavated = _material_count(h["yields"]) / total  # porter charges: not the screened materials
                 level = max(band, h["level"])
                 rows.append(row("Archaeology", f"{h['hotspot']} (simulated, {how}{h['mattock']})", level, band + 4, xp,
-                                yields=yields, assumptions=[kind, "soil screened as it piles up"],
+                                yields=yields, items_per_hour=excavated,
+                                assumptions=[kind, "soil screened as it piles up"],
                                 activity=h["hotspot"], afk=not sprites))
                 hotspot = (data().get("archaeology") or {}).get("hotspots", {}).get(h["hotspot"], {})
                 restored, loop_xp, notes, consumes = restore_loop(player, band, hotspot, yields, xp, best)
                 if restored:
-                    # Porter charges go on what's dug up (materials and artefacts), not on the chronotes it turns into.
-                    dug_up = sum(v for k, v in yields.items() if k in materials() or k.endswith("(damaged)"))
                     restored, loop_xp, guild_notes = hand_in(player, band, restored, loop_xp)
                     notes = notes + guild_notes
                     rows.append(row("Archaeology", f"{h['hotspot']}: excavate, screen and restore (simulated, {how}"
@@ -394,7 +422,7 @@ def method_rows(player: PlayerState) -> list[dict]:
                                     assumptions=[kind, "soil screened as it piles up",
                                                  "materials short at the hotspot topped up where they come fastest"] + notes,
                                     activity=h["hotspot"], afk=not sprites,
-                                    items_per_hour=dug_up,  # per hour at the hotspot: a little over the loop's
+                                    items_per_hour=excavated,  # per hour at the hotspot: a little over the loop's
                                     # Inputs from other skills: the row is costed with them (cost.consuming_row).
                                     **({"consumes": consumes} if consumes else {})))
     return rows

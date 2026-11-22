@@ -16,8 +16,9 @@ What each sim models, and how long its consumables last:
     (the potions' wiki pages).
   * a mining potion: the boost decays a level a minute (level_boosts), so a +B dose drunk when the last ran out
     lasts B + 1 minutes at an average of half the boost (sim.mining_boost's `potion_average`).
-  * signs of the porter (Mining, Woodcutting, Fishing, Archaeology: no bank trips, or Archaeology's full hit
-    rate): a charge per item sent to the bank, PORTER_CHARGES a sign (the signs' wiki pages), the best sign the
+  * signs of the porter (Mining, Woodcutting, Fishing, Archaeology: no bank trips; Archaeology only saves much at
+    caches away from a dig site, mechanics.archaeology._deposit): a charge per item sent to the bank (a row's
+    `items_per_hour` where it says, Archaeology's materials only), PORTER_CHARGES a sign (the signs' wiki pages), the best sign the
     player's Divination makes (recipes in data/conversions.json).
 Skillchompas and incense aren't offered: how fast they're used up isn't modelled.
 """
@@ -229,6 +230,7 @@ def boosted_rows(player: PlayerState) -> list[dict]:
                 rows.append({
                     **base, "method": f"{base['method']} with {option.label}", "xp_per_hour": r["xp_per_hour"],
                     "yields": yields, "consumes": consumes, "boost": option.label,
+                    **({"items_per_hour": items} if "items_per_hour" in r else {}),
                     "assumptions": list(base.get("assumptions") or []) + option.assumptions,
                     "base_skill": skill, "base_method": base["method"],
                     "recipe": {"output": main, "variants": [{
