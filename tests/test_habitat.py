@@ -68,3 +68,35 @@ def test_jadinkos_give_vines_and_use_juju_hunter_potions():
     assert draconic and draconic[0]["consumes"] == {"Juju hunter potion (3)": 2}
     assert draconic[0]["recipe"]["variants"][0]["materials"] == [["Juju hunter potion (3)", pytest.approx(0.2)]]
     assert not [r for r in plain.values() if r.get("consumes")]
+
+
+def _recipe(output, materials):
+    return {"skill": "Crafting", "output": output, "output_qty": 1.0, "level": 1, "xp": 1.0, "ticks": 2.0,
+            "materials": [[m, 1.0] for m in materials], "members": True, "quests": [], "other_skills": [],
+            "facility": ""}
+
+
+def test_a_cycle_does_not_leave_an_item_unsourced_for_good(monkeypatch):
+    """Looking up A walks A <- B <- A: B is unsourced on that walk only. Before the fix B stayed cached as
+    unsourced, so which items had a source depended on the order they were looked up in (Augmentor)."""
+    recipes = {"A": [_recipe("A", ["B"]), _recipe("A", ["S"])], "B": [_recipe("B", ["A"])]}
+    monkeypatch.setattr(gathering, "by_output", lambda: recipes)
+    g = _gatherer(monkeypatch, _player(Crafting=99), [], {"S": [["Some Store", 1000, 10.0, True]]})
+    assert g.source("A").complete
+    assert g.source("B") is not None and g.source("B").complete
+
+
+def test_starblooms_use_up_a_battlestaff(monkeypatch):
+    seed = {"seed": "Starbloom flower seed", "level": 100, "patch": ["Flower Patch"], "crops": ["Starbloom flower"],
+            "plant_xp": 0.0, "harvest_xp": 0.0, "grow_minutes": 20, "harvest_life": None, "max_harvests": 1.0,
+            "yield_per_harvest": 3.0, "check_xp": 0}
+    shops = {"Starbloom flower seed": [["Seed Store", 1000, 1000.0, True]], "Battlestaff": [["Staff Store", 1000, 7000.0, True]]}
+    g = _gatherer(monkeypatch, _player(Farming=105), [seed], shops)
+    flower = g.source("Starbloom flower")
+    assert g.patches("Flower Patch", seed)[1] == 12  # the seed page's yield, not the infobox's 3
+    seed_cost, staff_cost = g.source("Starbloom flower seed").cost_per_unit, g.source("Battlestaff").cost_per_unit
+    _, crop, minutes = g.patches("Flower Patch", seed)
+    patches = g.patches("Flower Patch", seed)[0]
+    assert flower.hours_per_unit == pytest.approx(minutes / 60 / (patches * crop) + (seed_cost + staff_cost) / crop)
+    plan = g.plan({"Starbloom flower": 24})
+    assert any("Battlestaff" in s for s in plan.steps)

@@ -120,7 +120,13 @@ PATCHES = {
     "Vine bush patch": (1, 4, 2),
     "Vine flower patch": (1, 1, 2),
     "Harmony pillar": (4, 3, 4),  # four in the Meilyr district (Harmony moss page)
+    # Flower patches sit beside the allotments on an allotment run, so a few minutes on top of it.
+    "Flower Patch": (7, 1, 4),
+    "Calquat patch": (1, 6, 3),
+    "Nightshade patch": (1, 7, 3),
 }
+# What planting takes besides the seed, used up each time (Starbloom flower seed page: a battlestaff).
+PLANT_WITH = {"Starbloom flower seed": {"Battlestaff": 1}}
 # Patches whose plant keeps producing once grown (fruit trees, bushes, cacti: the primal-fruit run "can be
 # farmed without needing new seeds every run"): the seed is planted once, then each harvest only waits for
 # the regrowth. Values are regrow minutes (the wiki's primal fruit guide: cacti and fruit trees every 2 hours,
@@ -226,6 +232,8 @@ class Gatherer:
         self._consumes: dict[str, dict[str, float]] = {}
         self._consumable_cost: dict[str, float] = {}
         self._in_progress: set[str] = set()  # items source() is still working out (recipe cycles)
+        self._cycle_hits: set[str] = set()  # open items the current lookup ran into (source())
+        self._provisional: dict[str, tuple[Source | None, frozenset[str]]] = {}  # answers valid while those stay open
         self._training_rate: float | None = None
         self._plain_spot: dict[str, str | None] = {}  # boosted spot -> the same spot without the boost
         self._making: set[str] = set()  # consumables being planned: spots that use them up are out meanwhile
@@ -325,13 +333,31 @@ class Gatherer:
         """The fastest way to get one more `item` (cached). Complete chains win over ones with unsourced
         inputs or unmet levels; None when nothing makes, sells or drops it."""
         if item in self._sources:
+            if item in self._in_progress:
+                self._cycle_hits.add(item)  # a cycle: whoever asked gets a provisional answer
             return self._sources[item]
+        if (held := self._provisional.get(item)) is not None:
+            result, hits = held
+            if hits <= self._in_progress:  # what it hung on is still open: the same answer for this walk
+                self._cycle_hits |= hits
+                return result
+            del self._provisional[item]
         self._sources[item] = None  # guards recipe cycles
         self._in_progress.add(item)
+        outer, self._cycle_hits = self._cycle_hits, set()
         try:
-            return self._source(item)
+            result = self._source(item)
         finally:
             self._in_progress.discard(item)
+            hits = self._cycle_hits - {item}
+            self._cycle_hits = outer | hits
+        if hits:
+            # Worked out while an item further up was still open (Augmentor -> components -> disassembling gear that
+            # takes an Augmentor): right for this walk, but not cached, or the item would stay "unsourced" for good.
+            self._sources.pop(item, None)
+            self._alternates.pop(item, None)
+            self._provisional[item] = (result, frozenset(hits))
+        return result
 
     def _source(self, item: str) -> Source | None:
         p = self.ctx.player
@@ -577,7 +603,17 @@ class Gatherer:
             grow = PERENNIAL_PATCHES.get(patch, seed["grow_minutes"])
             if patch in XP_GROWN:  # xp to train, as calendar minutes at the player's pace
                 grow = XP_GROWN[patch] / self.training_rate() * 60 * 24 / ASSUMED_PLAY_HOURS_PER_DAY
-            per_unit = minutes / 60 / (patches * crop) + sub.cost_per_unit / crop / harvests
+            extras = PLANT_WITH.get(seed["seed"], {})
+            extra_cost = 0.0
+            for name, qty in extras.items():
+                if (with_src := self.source(name)) is None:
+                    break
+                extra_cost += qty * with_src.cost_per_unit
+            else:
+                extras = None
+            if extras:  # a planting material with no source
+                continue
+            per_unit = minutes / 60 / (patches * crop) + (sub.cost_per_unit + extra_cost) / crop / harvests
             kept = patch in KEPT_PLANTED
             src = Source("farm", f"grow from {seed['seed']}" + (" (patches kept planted)" if kept else ""), per_unit,
                          seed={**seed, "patch_type": patch},
@@ -745,6 +781,13 @@ class Gatherer:
                 need_seeds = min(patches, runs) if seed["patch_type"] in PERENNIAL_PATCHES else math.ceil(n / crop)
                 take = min(need_seeds, stock.get(seed["seed"], 0))
                 stock[seed["seed"]] = stock.get(seed["seed"], 0) - take
+                plant = {}
+                for m, q in PLANT_WITH.get(seed["seed"], {}).items():  # the battlestaffs starblooms use up
+                    want = math.ceil(q * need_seeds)
+                    held = min(want, max(0, stock.get(m, 0)))
+                    stock[m] = stock.get(m, 0) - held
+                    if want > held:
+                        plant[m] = want - held
                 active = runs * minutes / 60
                 g.hours += active
                 g.calendar_hours += n * src.calendar_per_unit
@@ -759,8 +802,9 @@ class Gatherer:
                 kept = ", kept planted" if src.passive else ""
                 g.steps.append(f"grow {n:,} {item} from {need_seeds:,} {seed['seed']} ({runs:,} {seed['patch_type'].lower()} runs{kept}, "
                                f"~{active:.1f}h of play, {grows})")
-                if need_seeds > take:
-                    sub = self._plan({seed["seed"]: need_seeds - take}, stock, extra)
+                if need_seeds > take or plant:
+                    sub = self._plan({**({seed["seed"]: need_seeds - take} if need_seeds > take else {}), **plant},
+                                     stock, extra)
                     g.hours += sub.hours
                     g.coins += sub.coins
                     g.calendar_hours += sub.calendar_hours

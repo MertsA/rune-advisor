@@ -23,6 +23,7 @@ from functools import cache
 from . import datapkg
 
 from .models import PlayerState
+from .xp import SKILL_ALIASES
 
 UNIQUE_CHANCE = 1 / 250
 # An item many sources drop (uncut gems, runes) isn't a unique even when it's rare per kill.
@@ -171,15 +172,30 @@ def boss_sim_kills_per_hour(player: PlayerState, monster: str,
     return kph, STYLES[how], kph * m["xp"]
 
 
+LOOT_TABLE = re.compile(r"^(.+) loot \((story|normal|hard)\)$")
+
+
 def estimated_kills_per_hour(player: PlayerState, monster: str,
                              style: tuple[str, float]) -> tuple[float, str, float] | None:
     """(kills/h, combat skill, xp/h) for killing `monster`, or None if it can't be estimated or the
     player can't fight it (Slayer level, members-only on free-to-play). `style` is the player's best
     combat (skill, xp/h) for a generic spot, from gear.best_style. Bosses go through the combat sim
-    (boss_sim_kills_per_hour) when no guide rates them."""
+    (boss_sim_kills_per_hour) when no guide rates them, else at the guide's rate when the player meets its
+    levels and quests and it isn't team content."""
+    if (loot := LOOT_TABLE.match(monster)) is not None:
+        # A boss whose loot the wiki tables per mode ("Zemouregal & Vorkath loot (normal)"): the normal mode's
+        # table at the boss's own rate; story and hard modes aren't separate rates here.
+        return estimated_kills_per_hour(player, loot.group(1), style) if loot.group(2) == "normal" else None
     m = tables()["monsters"].get(monster)
     if monster in bosses():
-        return None if boss_kills_per_hour(player, monster) else boss_sim_kills_per_hour(player, monster)
+        if (guide := boss_kills_per_hour(player, monster)) is None:
+            return boss_sim_kills_per_hour(player, monster)
+        row = guide.row
+        if guide.group or any(player.level(SKILL_ALIASES.get(sk, sk)) < lvl for sk, lvl in (row.get("skills") or {}).items()) \
+                or any(not (q in player.quests and player.quests[q].done) for q in row.get("quests") or []):
+            return None
+        from .gear import STYLES
+        return guide.kills_per_hour, STYLES[guide.style], guide.kills_per_hour * ((m or {}).get("xp") or 0)
     if not m or not m.get("xp") or (m.get("life_points") or 0) > MAX_ESTIMATED_LIFE_POINTS:
         return None
     if monster in unfarmable():

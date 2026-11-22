@@ -167,3 +167,24 @@ def test_owning_the_grace_of_the_elves_is_not_free_porters():
     assert profile.porter(p) is None  # it holds charges, makes none
     p.boosts = {"porters": True}
     assert profile.porter(p) == "Grace of the Elves"
+
+
+def test_guided_bosses_are_drop_sources(monkeypatch):
+    """A boss with a money making guide used to give no kill rate to the gatherer (only guideless bosses went
+    through the combat sim), so Araxxi's spider legs and the like had no source."""
+    from rune_advisor import drops
+
+    rate = drops.BossRate(14.0, "Money making guide/Araxxor", "necromancy", 1.0, False, {"skills": {"Constitution": 80}})
+    monkeypatch.setattr(drops, "bosses", lambda: {"Araxxi"})
+    monkeypatch.setattr(drops, "boss_kills_per_hour", lambda p, m: rate)
+    p = _player(Hitpoints=90)
+    kph, skill, _ = drops.estimated_kills_per_hour(p, "Araxxi", ("Attack", 100_000))
+    assert (kph, skill) == (14.0, "Necromancy")
+    assert drops.estimated_kills_per_hour(_player(Hitpoints=70), "Araxxi", ("Attack", 100_000)) is None
+    # Loot tabled per mode: the normal mode's table at the boss's rate.
+    monkeypatch.setattr(drops, "bosses", lambda: {"Araxxi"})
+    assert drops.estimated_kills_per_hour(p, "Araxxi loot (normal)", ("Attack", 1))[0] == 14.0
+    assert drops.estimated_kills_per_hour(p, "Araxxi loot (hard)", ("Attack", 1)) is None
+    group = drops.BossRate(7.0, "Money making guide/Vorago", "melee", 1.0, True, {})
+    monkeypatch.setattr(drops, "boss_kills_per_hour", lambda p, m: group)
+    assert drops.estimated_kills_per_hour(p, "Araxxi", ("Attack", 1)) is None  # team content
