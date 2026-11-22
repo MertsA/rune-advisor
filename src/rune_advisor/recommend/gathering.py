@@ -24,9 +24,10 @@ For each item a plan is short of, the cheapest way to get it (fewest hours per u
            materials it surely gives (the same quantile) cover later shortfalls. When planning, the cheapest few
            items are re-costed against the bank (smithing a weapon from banked bars costs only the smithing), and
            items with banked inputs join them. Gear can be made to disassemble, never taken from the bank.
-  * daily  Managing Miscellania: the kingdom's subjects gather one resource a day (MISCELLANIA, the
-           wiki's maximums with 10 workers on it, 100% approval and Royal Trouble), for a short visit
-           and 75k gp from the coffers each day; the days are calendar time.
+  * daily  Managing Miscellania (kingdom.py): subjects, at most 10 a category, gather a category's items
+           (fishing: tuna and swordfish together) for 5,000 gp of pay a subject-day and a short visit; one plan
+           shares its subject-days (kingdom.Ledger), so items that come together are paid for once; the days are
+           calendar time.
   * gather logs and ores: simulated per player from the wiki's Woodcutting/Mining mechanics (sim.py);
            items sim.py doesn't know fall back to: logs per hour = the tree's own guide xp/h (a Woodcutting row naming
            it, e.g. "Maple") over the log's xp. Trees the guide has no row for (yew, magic, elder,
@@ -52,7 +53,7 @@ from ..cost import row_skills, typical_rate
 from ..boosts import GATHERING_SKILLS, item_multiplier
 from ..drops import (ASSUMED_RATES, CASKETS_PER_HOUR, DAILY_KINDS, EXCLUDED_SOURCES, assumed_rate, drop_chance,
                      estimated_kills_per_hour, kills_per_hour, source_kind, sources_of, tables)
-from .. import claims, currencies, respect
+from .. import claims, currencies, kingdom, respect
 from .. import disassembly as dis
 from .. import sim
 from ..gear import equipment
@@ -81,15 +82,9 @@ WEEK_HOURS = 7 * 24
 MAX_SHOP_ITEMS_PER_HOUR = 2_000
 # Shops stocking this many of an item sell stackables (shards, feathers, runes): no backpack limit.
 STACKABLE_SHOP_STOCK = 10_000
-# Managing Miscellania, per day with all 10 workers on one resource (wiki, Royal Trouble done, 100%
-# approval, coffers at 750k+). Without Royal Trouble resources per gp are 1/1.5 of this.
-MISCELLANIA = {"Maple logs": 892, "Teak logs": 301, "Mahogany logs": 223, "Coal": 546, "Flax": 1250,
-               "Raw tuna": 440, "Raw swordfish": 131}
-MISC_COINS_PER_DAY = 75_000
 # Disassembly candidates re-costed against the bank when planning (the cheapest by per-unit cost, and as
 # many again whose recipe inputs are banked).
 DISASSEMBLY_SHORTLIST = 8
-MISC_VISIT_HOURS = 0.05
 PASSIVE_HORIZON_HOURS = 4 * 7 * 24  # a plan counts on at most four weeks of a passive supply (kingdom, weekly claims)
 CLAIM_VISIT_HOURS = 1 / 60  # collecting one weekly claim (claims.py), usually on the way past
 # Waiting counts for a little: a day of calendar time (patch growth, weekly shop stock) costs this many
@@ -169,6 +164,7 @@ class Source:
     disassemble: str | None = None  # the item disassembled (disassemble)
     passive: bool = False  # comes in without play (Managing Miscellania): its calendar time isn't a cost
     flag: str | None = None  # a flagged estimate stands in for missing data (drops.ASSUMED_RATES): why
+    kingdom: tuple[str, str] | None = None  # Managing Miscellania's (category, setting) bringing it in
 
     @property
     def complete(self) -> bool:
@@ -254,6 +250,7 @@ class Gatherer:
         self.flagged: dict[str, str] = {}
         self.flag_use: dict[str, list] = {}
         self._goals: frozenset[str] = frozenset()
+        self._kingdom = kingdom.Ledger(ctx.player, PASSIVE_HORIZON_HOURS / 24)
         self._plain_spot: dict[str, str | None] = {}  # boosted spot -> the same spot without the boost
         self._making: set[str] = set()  # consumables being planned: spots that use them up are out meanwhile
         # Items no source covers, over every plan this gatherer made: item -> (units, goals they were for).
@@ -398,9 +395,9 @@ class Gatherer:
         for src, chance, qty in sources_of(item):
             c, guessed = drop_chance(chance)
             if not c or source_kind(src) not in DAILY_KINDS or EXCLUDED_SOURCES.search(src) \
-                    or src in collection_names() or (src == "Managing Miscellania" and item in MISCELLANIA) \
+                    or src in collection_names() or src == "Managing Miscellania" \
                     or any(c_["item"] == item and _same_npc(src, c_["npc"]) for c_ in claims.data()):
-                continue  # modelled properly: the kingdom (MISCELLANIA) and the weekly claims (claims.py)
+                continue  # modelled properly: the kingdom (kingdom.py) and the weekly claims (claims.py)
             per = c * (qty or 1)
             why = ASSUMED_RATES["daily"][1]
             out.append(Source("daily", f"from {src} (ASSUMED rate: {why})", CLAIM_VISIT_HOURS / per,
@@ -574,12 +571,14 @@ class Gatherer:
                 boon = item_multiplier(p)  # Boon of Crondis: extra logs, same xp per hour
                 options.append(Source("gather", how, gath["xp"] / rate / boon,
                                       xp_per_unit={gath["skill"]: gath["xp"] / boon}, rep=rep))
-        misc = p.quests.get("Throne of Miscellania")
-        if item in MISCELLANIA and p.members and misc is not None and misc.done:
-            rt = p.quests.get("Royal Trouble")
-            per_day = MISCELLANIA[item] * (1.0 if rt is not None and rt.done else 1 / 1.5)
-            options.append(Source("daily", "Managing Miscellania (all workers on it)", MISC_VISIT_HOURS / per_day,
-                                  MISC_COINS_PER_DAY / per_day, calendar_per_unit=24 / per_day, passive=True))
+        for category, setting, per in kingdom.settings_for(p, item):
+            # Costed per unit as 10 subjects on the category paid for this item alone (its partners, swordfish with
+            # tuna, are free when a plan wants them too: kingdom.Ledger).
+            per_day = kingdom.SUBJECTS_PER_CATEGORY * per
+            options.append(Source("daily", f"Managing Miscellania ({category}, {setting})",
+                                  kingdom.VISIT_HOURS_PER_DAY / per_day,
+                                  kingdom.SUBJECTS_PER_CATEGORY * kingdom.COINS_PER_SUBJECT_DAY / per_day,
+                                  calendar_per_unit=24 / per_day, passive=True, kingdom=(category, setting)))
         for claim in claims.available(p):
             if claim.item == item:  # a week's free supply from a task set reward: a minute to collect, a week to wait
                 options.append(Source("daily", f"weekly claim from {claim.npc} ({claim.qty:,} a week: {claim.why})",
@@ -837,6 +836,8 @@ class Gatherer:
         on the way needs are trained first, once each (except `training`: the plan's own skill)."""
         stock = dict(stock if stock is not None else self.ctx.player.holdings)
         outer_goals, self._goals = self._goals, self._goals or frozenset(short)
+        if not outer_goals:  # a new plan: the kingdom's subjects are free again for its window
+            self._kingdom = kingdom.Ledger(self.ctx.player, PASSIVE_HORIZON_HOURS / 24)
         try:
             g = self._plan(short, stock, {})
         finally:
@@ -983,19 +984,17 @@ class Gatherer:
                 continue
             chain = self._alternates.get(item) or []
             alt = next(iter(chain[chain.index(src) + 1:]), None) if src in chain else None
+            if src.kingdom:
+                n = self._from_kingdom(g, item, n, src)
+                if n > 0 and alt is not None:
+                    self._overflow(g, drops, item, n, src, alt, stock, extra)
+                elif n > 0:
+                    g.short[item] = g.short.get(item, 0) + n
+                continue
             if src.passive and src.calendar_per_unit and alt is not None \
                     and (cap := int(PASSIVE_HORIZON_HOURS / src.calendar_per_unit)) < n:
-                # A passive supply only counts for what it brings in over the horizon; the rest is gathered. Dropped
-                # at a spot: in this plan's visits, so a spot's other items share them (the fish farm's catch).
-                if alt.kind == "drop":
-                    drops[item] = drops.get(item, 0) + n - cap
-                else:
-                    self._sources[item] = alt
-                    try:
-                        sub = self._plan({item: n - cap}, stock, extra)
-                    finally:
-                        self._sources[item] = src
-                    self._merge(g, sub)
+                # A passive supply only counts for what it brings in over the horizon; the rest is gathered.
+                self._overflow(g, drops, item, n - cap, src, alt, stock, extra)
                 n = cap
                 if n <= 0:
                     continue
@@ -1066,6 +1065,41 @@ class Gatherer:
             g.steps.append(f"get {n:,} {item}: {src.how} (~{hours:.1f}h{cost})")
         self._visit_spots(g, drops, stock, extra)
         return g
+
+    def _overflow(self, g: Gathering, drops: dict[str, int], item: str, n: int, src: Source, alt: Source,
+                  stock: dict[str, int], extra: dict[str, int]) -> None:
+        """What a capped passive supply can't bring in, from the item's next source. Dropped at a spot: in this
+        plan's visits, so a spot's other items share them (the fish farm's catch)."""
+        if alt.kind == "drop":
+            drops[item] = drops.get(item, 0) + n
+            return
+        self._sources[item] = alt
+        try:
+            sub = self._plan({item: n}, stock, extra)
+        finally:
+            self._sources[item] = src
+        self._merge(g, sub)
+
+    def _from_kingdom(self, g: Gathering, item: str, n: int, src: Source) -> int:
+        """Take `item` from the plan's kingdom ledger: first what subject-days already bought for a partner item
+        bring in, then new subject-days while the window and the subjects allow. Returns what is still short."""
+        category, setting = src.kingdom
+        free, new, days = self._kingdom.take(item, n, category, setting)
+        got = math.floor(free + new + 1e-6)
+        if got <= 0:
+            return n
+        coins = days * kingdom.COINS_PER_SUBJECT_DAY
+        g.hours += days / kingdom.SUBJECTS_PER_CATEGORY * kingdom.VISIT_HOURS_PER_DAY
+        g.coins += coins
+        g.calendar_hours += days / kingdom.SUBJECTS_PER_CATEGORY * 24
+        parts = []
+        if free >= 1:
+            parts.append(f"{free:,.0f} with the {category} subjects already paid")
+        if new >= 1:
+            parts.append(f"{new:,.0f} from ~{days:,.0f} subject-days (~{days / kingdom.SUBJECTS_PER_CATEGORY:,.0f} "
+                         f"days at 10 subjects, ~{coins:,.0f} gp of pay from the coffers)")
+        g.steps.append(f"get {got:,} {item}: Managing Miscellania ({category}, {setting}): {'; '.join(parts)}")
+        return n - got
 
     def _held(self, item: str, stock: dict[str, int]) -> int:
         """How many of `item` a disassembly may take from the stock: none of the player's gear."""
