@@ -236,6 +236,7 @@ class Gatherer:
         self._estimated: set[str] = set()
         self._worded: set[tuple[str, str]] = set()  # (item, spot) whose drop chance is a worded rarity's guess
         self._side_xp: dict[str, dict[str, float]] = {}  # method -> other skills' xp per hour
+        self._spot_yields: dict[str, dict[str, float]] = {}  # gathering spots yielding 2+ items: method -> per hour
         # Spots that are consumable-boost twins (consumables.boosted_rows): method -> what they use up per hour.
         self._consumes: dict[str, dict[str, float]] = {}
         self._consumable_cost: dict[str, float] = {}
@@ -286,6 +287,8 @@ class Gatherer:
                     boon = item_multiplier(p) if skill in GATHERING_SKILLS else 1.0
                     for item, per_hour in (row.get("yields") or {}).items():
                         index.setdefault(item, []).append((row["method"], skill, float(per_hour) * boon, rate))
+                    if len(row.get("yields") or {}) > 1:
+                        self._spot_yields[row["method"]] = {i: float(n) * boon for i, n in row["yields"].items()}
                     kph = kills_per_hour(row, skill, rate)
                     if not kph:
                         continue
@@ -314,6 +317,12 @@ class Gatherer:
             src = self.complete_source(item)
             self._consumable_cost[item] = self.net_cost(src) if src is not None else float("inf")
         return self._consumable_cost[item]
+
+    def multi_yield_spots(self) -> dict[str, dict[str, float]]:
+        """Gathering spots the player can use that yield several items at once (the fish farm's pools, mixed ore
+        rocks): method -> items per hour."""
+        self._drops()
+        return self._spot_yields
 
     def spot_hours(self, method: str) -> float:
         """What an hour at a spot costs: the hour, plus making what a boosted spot uses up in it. A spot whose
@@ -976,13 +985,17 @@ class Gatherer:
             alt = next(iter(chain[chain.index(src) + 1:]), None) if src in chain else None
             if src.passive and src.calendar_per_unit and alt is not None \
                     and (cap := int(PASSIVE_HORIZON_HOURS / src.calendar_per_unit)) < n:
-                # A passive supply only counts for what it brings in over the horizon; the rest is gathered.
-                self._sources[item] = alt
-                try:
-                    sub = self._plan({item: n - cap}, stock, extra)
-                finally:
-                    self._sources[item] = src
-                self._merge(g, sub)
+                # A passive supply only counts for what it brings in over the horizon; the rest is gathered. Dropped
+                # at a spot: in this plan's visits, so a spot's other items share them (the fish farm's catch).
+                if alt.kind == "drop":
+                    drops[item] = drops.get(item, 0) + n - cap
+                else:
+                    self._sources[item] = alt
+                    try:
+                        sub = self._plan({item: n - cap}, stock, extra)
+                    finally:
+                        self._sources[item] = src
+                    self._merge(g, sub)
                 n = cap
                 if n <= 0:
                     continue

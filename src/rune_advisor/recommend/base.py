@@ -528,15 +528,29 @@ class Context:
             hours, same_skill = xp / run.rate, 0.0
             for name, n in run.shortfall.items():
                 src = self.gatherer.complete_source(name)
-                # Net of by-products (side xp other goals want, reputation still needed); a capped passive supply
-                # only for what it brings in (Gatherer.bulk_cost).
-                hours += self.gatherer.bulk_cost(name, n)
                 # Making the inputs with this skill (unfinished potions, supers for extremes) trains it too.
                 same_skill += n * src.xp_per_unit.get(skill, 0) if src else 0
+            # Net of by-products (side xp other goals want, reputation still needed); a capped passive supply
+            # only for what it brings in (Gatherer.bulk_cost). A spot's whole catch is costed as one visit.
+            hours += self._shortfall_hours(m, run.shortfall)
             per_xp = hours / (xp + same_skill)
             if best is None or per_xp < best[0]:
                 best = (per_xp, run)
         return best[1] if best and best[0] < float("inf") else None
+
+    def _shortfall_hours(self, method: dict, shortfall: dict[str, int]) -> float:
+        """Hours to gather a run's shortfall. For a catch mix (`spot`: everything one multi-yield spot brings in, each
+        processed), the cheaper of the items' own sources and that spot's visit, whose hours cover every item at once
+        (the longest need sets it); per item, each would be charged the whole visit."""
+        each = sum(self.gatherer.bulk_cost(name, n) for name, n in shortfall.items())
+        spot = method.get("spot")
+        if not spot or not shortfall:
+            return each
+        per_hour = self.gatherer.multi_yield_spots().get(spot, {})
+        if any(not per_hour.get(name) for name in shortfall):
+            return each
+        visit = max(n / per_hour[name] for name, n in shortfall.items()) * self.gatherer.spot_hours(spot)
+        return min(each, visit)
 
     def _recipe_band_run(self, methods: list[dict], xp: float, stock: dict[str, int],
                          group: dict[str, dict[str, int]] | None, plain_hours: float) -> MaterialRun | None:
@@ -591,6 +605,7 @@ class Context:
         cap = self.cost.rate(skill, level)
         rows = []
         extra = []
+        single: dict[str, tuple[float, float]] = {}  # input -> (this skill's xp per unit, xp/h) of its best recipe
         if skill == "Archaeology":  # restoring what each hotspot digs up, mixed as it's found
             from ..mechanics.archaeology import restoration_mixes
             extra = restoration_mixes(level)
@@ -611,6 +626,36 @@ class Context:
                          "recipe": {"output": r["output"], "variants": [
                              {"output_qty": 1, "xp": r["xp"] / r["output_qty"], "ticks": r["ticks"],
                               "materials": [[n, q / r["output_qty"]] for n, q in r["materials"]]}]}})
+            if len(r["materials"]) == 1:  # one input, one at a time (cooking a fish): a catch mix can use it
+                (name, q), = r["materials"]
+                per = (r["xp"] / q, rate)
+                if per[0] > single.get(name, (0, 0))[0]:
+                    single[name] = per
+        if self.player.ironman:
+            rows += self._catch_mixes(skill, single)
+        return rows
+
+    def _catch_mixes(self, skill: str, single: dict[str, tuple[float, float]]) -> list[dict]:
+        """A recipe per multi-yield spot whose items this skill processes (the fish farm's four fish, all cooked):
+        one action is one average item of the spot's catch, so the catch is costed as one visit
+        (Context._shortfall_hours) instead of each item paying for the whole visit."""
+        rows = []
+        for spot, per_hour in self.gatherer.multi_yield_spots().items():
+            used = {i: n for i, n in per_hour.items() if i in single and n > 0}
+            if len(used) < 2:
+                continue
+            total = sum(used.values())
+            xp = sum(n * single[i][0] for i, n in used.items()) / total
+            hours = sum(n * single[i][0] / single[i][1] for i, n in used.items()) / total
+            # Processed where the skill usually is (a range by a bank: the recipes' own bank trips), not at the spot;
+            # the catch comes back noted or banked (the fish farm's Maya notes raw fish).
+            rows.append({"skill": skill, "method": f"take {spot}'s catch to the bank and process it there"
+                                                   f" ({', '.join(used)})",
+                         "level_min": 1, "xp_per_hour_low": xp / hours, "xp_per_hour_high": None, "spot": spot,
+                         "recipe": {"output": f"processed fish from {spot}" if all(i.startswith("Raw ") for i in used)
+                                    else f"processed catch of {spot}", "variants": [
+                             {"output_qty": 1, "xp": xp, "ticks": hours * 6000,
+                              "materials": [[i, n / total] for i, n in used.items()]}]}})
         return rows
 
     def _apply_materials(self, plan: LevelPlan, skill: str, target_xp: int) -> None:

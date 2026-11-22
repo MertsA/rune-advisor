@@ -212,3 +212,21 @@ def test_supply_fixes_from_the_skill_audit():
     assert fishing.bait_for(p, "Raw karambwan") == "Raw karambwanji" and fishing.bait_for(p, "Raw rocktail")
     assert _same_npc("Razmire Keelgan", "Razmire in Mort'ton") and not _same_npc("Wizard Mizgog", "Wizard Cromperty in Ardougne")
     assert drops.assumed_rate(p, "Giant crayfish pool", STYLE) is None  # the fish farm's rows rate it
+
+
+def test_a_spots_catch_is_costed_as_one_visit(monkeypatch):
+    """A recipe mix over a multi-yield spot's catch (the fish farm's four fish, cooked) pays for the visit once: the
+    longest need sets the hours, where costing each fish alone would charge every fish the whole visit."""
+    ctx = Context(player=_player(Cooking=99, Fishing=99), cost=CostModel.default(use_wiki=False))
+    g = ctx.gatherer
+    monkeypatch.setattr(g, "multi_yield_spots", lambda: {"Farm": {"Raw a": 100.0, "Raw b": 50.0}})
+    monkeypatch.setattr(g, "spot_hours", lambda m: 1.25)  # the hour plus its feed
+    monkeypatch.setattr(g, "bulk_cost", lambda item, n: n / {"Raw a": 100.0, "Raw b": 50.0}[item])
+    need = {"Raw a": 200, "Raw b": 100}
+    assert ctx._shortfall_hours({"spot": "Farm"}, need) == pytest.approx(2.5)  # 2 visits' hours, with feed
+    assert ctx._shortfall_hours({}, need) == pytest.approx(4.0)  # each item alone: 2 h + 2 h
+    single = {"Raw a": (100.0, 200_000.0), "Raw b": (300.0, 300_000.0)}
+    mix, = ctx._catch_mixes("Cooking", single)
+    v = mix["recipe"]["variants"][0]
+    assert mix["spot"] == "Farm" and dict(v["materials"]) == pytest.approx({"Raw a": 2 / 3, "Raw b": 1 / 3})
+    assert v["xp"] == pytest.approx((100 * 100 + 50 * 300) / 150)
