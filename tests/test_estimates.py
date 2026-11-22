@@ -163,3 +163,25 @@ def test_screening_is_part_of_excavation():
     assert archaeology.soil_box(p) == 500 + archaeology.SOIL_BACKPACK
     dig = next(r for r in archaeology.method_rows(p) if r["method"].startswith("Acropolis debris (simulated"))
     assert "Saltwater mud" not in dig["yields"] and "soil screened as it piles up" in dig["assumptions"]
+
+
+def test_guild_unlocks_research_and_hand_ins(monkeypatch):
+    from rune_advisor import archaeology_guild as ag
+    from rune_advisor.mechanics import archaeology
+
+    p = _player(Archaeology=100)
+    p.vars = {"ARCH_SOIL_BOX_UPGRADE": 3}
+    left = {u["name"] for u, _ in ag.unlocks_left(p)}
+    assert "Soil box upgrade" not in left and "Master archaeologist's hat" in left
+    p.boosts = {"archaeology_unlocks": ["Material storage upgrade x3"]}
+    assert "Material storage upgrade" not in {u["name"] for u, _ in ag.unlocks_left(p)}
+    # Research: 4,000 xp an hour at Kharid-et at 100, 110% at Stormguard; 5 x 100 x 1.1 = 550 chronotes an hour.
+    assert ag.research_xp(100, 110) == pytest.approx(4400) and ag.research_cost(101, 110) == pytest.approx(550)
+    assert ag.best_research(100)[1]["factor"] == 110
+    # Restored artefacts handed in at collection value; research only once every unlock is bought.
+    monkeypatch.setattr(ag, "unlocks_left", lambda player: [])
+    restored = {"Amphora": 2.0}
+    value = 2 * 744 * ag.COLLECTION_FACTOR
+    yields, xp, notes = archaeology.hand_in(p, 100, restored, 100_000)
+    spent = value - yields.get("chronotes", 0)
+    assert xp == pytest.approx(100_000 + spent / 550 * 4400) and any("research" in n for n in notes)

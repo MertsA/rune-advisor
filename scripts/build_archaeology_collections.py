@@ -51,9 +51,11 @@ def parse_collection(wikitext: str) -> dict | None:
             artefacts.append(line[1:].strip())
     rewards = {}
     if rec := RECURRING.search(wikitext):
-        for name, qty in DROP.findall(rec.group(1)):
-            if name.strip() != "Chronotes":
-                rewards[name.strip()] = _num(qty)
+        found = [(n.strip(), _num(q)) for n, q in DROP.findall(rec.group(1)) if n.strip() != "Chronotes"]
+        # Tetracompass pieces come one a completion, in order (left, right, dial, needle): a quarter of each.
+        rotating = "name=tetracompass" in rec.group(1)
+        for name, qty in found:
+            rewards[name] = qty / len(found) if rotating and name.startswith("Tetracompass piece") else qty
     level = re.search(r"\|archlevel\s*=\s*(\d+)", wikitext)
     members = re.search(r"\|members\s*=\s*(\w+)", wikitext)
     return {"artefacts": artefacts, "bonus_chronotes": bonus, "rewards": rewards,

@@ -1,3 +1,4 @@
+from .archaeology_guild import ArchaeologyGuildTrack
 from .collection_logs import CollectionLogsTrack
 from .darts import DartsTrack
 from .dnd_tokens import DndTokensTrack
@@ -11,4 +12,5 @@ from .task_sets import TaskSetsTrack
 from .toolbelt import ToolbeltTrack
 
 ALL_TRACKS = {t.name: t for t in (QuestPointsTrack, MilestoneTrack, RuneScoreTrack, GearTrack, FreeXpTrack, OutfitsTrack, TaskSetsTrack,
-                                         CollectionLogsTrack, ToolbeltTrack, DartsTrack, DndTokensTrack)}
+                                         CollectionLogsTrack, ToolbeltTrack, DartsTrack, DndTokensTrack,
+                                         ArchaeologyGuildTrack)}

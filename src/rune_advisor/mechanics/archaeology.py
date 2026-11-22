@@ -328,6 +328,30 @@ def materials() -> frozenset[str]:
     return frozenset({m for h in hs.values() for m, _ in h.get("materials") or []} | {c["material"] for c in caches()})
 
 
+def hand_in(player: PlayerState, level: int, restored: dict[str, float], xp: float) -> tuple[dict[str, float], float, list[str]]:
+    """The loop's restored artefacts handed to collectors: chronotes at their collection value (each artefact's
+    chronotes, doubled by the set bonus as collections fill: archaeology_guild.COLLECTION_FACTOR). Once every Guild
+    shop unlock is bought the chronotes fund the research team (offline, one expedition at a time: at most
+    24 / ASSUMED_PLAY_HOURS_PER_DAY research hours per hour played), whose xp joins the loop's. Returns (yields:
+    the chronotes left, xp/h, notes)."""
+    from .. import archaeology_guild as ag
+    from ..recommend.catalogue import archaeology_collections
+    from ..recommend.gathering import ASSUMED_PLAY_HOURS_PER_DAY
+
+    values = archaeology_collections().get("artefact_chronotes") or {}
+    chronotes = sum(n * values.get(a, 0) for a, n in restored.items()) * ag.COLLECTION_FACTOR
+    notes = ["restored artefacts handed to collectors (chronotes at collection value)"]
+    best = ag.best_research(level)
+    if chronotes and best and not ag.unlocks_left(player):
+        site, info = best
+        cost = ag.research_cost(level, info["factor"])
+        hours = min(24 / ASSUMED_PLAY_HOURS_PER_DAY, chronotes / cost)
+        xp += hours * ag.research_xp(level, info["factor"])
+        chronotes -= hours * cost
+        notes.append(f"chronotes fund {hours:.1f}h of {site} research a played hour (offline)")
+    return ({"chronotes": chronotes} if chronotes > 1e-9 else {}), xp, notes
+
+
 def method_rows(player: PlayerState) -> list[dict]:
     """Excavation: a row per hotspot (AFK and time sprites) and per material cache, the soil screened as it piles up
     (`screened`), yielding materials and damaged artefacts. Restoring is a workbench recipe (the recipe catalogue).
@@ -361,11 +385,16 @@ def method_rows(player: PlayerState) -> list[dict]:
                 hotspot = (data().get("archaeology") or {}).get("hotspots", {}).get(h["hotspot"], {})
                 restored, loop_xp, notes, consumes = restore_loop(player, band, hotspot, yields, xp, best)
                 if restored:
+                    # Porter charges go on what's dug up (materials and artefacts), not on the chronotes it turns into.
+                    dug_up = sum(v for k, v in yields.items() if k in materials() or k.endswith("(damaged)"))
+                    restored, loop_xp, guild_notes = hand_in(player, band, restored, loop_xp)
+                    notes = notes + guild_notes
                     rows.append(row("Archaeology", f"{h['hotspot']}: excavate, screen and restore (simulated, {how}"
                                     f"{h['mattock']})", level, band + 4, loop_xp, yields=restored,
                                     assumptions=[kind, "soil screened as it piles up",
                                                  "materials short at the hotspot topped up where they come fastest"] + notes,
                                     activity=h["hotspot"], afk=not sprites,
+                                    items_per_hour=dug_up,  # per hour at the hotspot: a little over the loop's
                                     # Inputs from other skills: the row is costed with them (cost.consuming_row).
                                     **({"consumes": consumes} if consumes else {})))
     return rows

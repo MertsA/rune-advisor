@@ -346,6 +346,36 @@ class Gatherer:
                                          for r in rows)
         return self._activities
 
+    def _research_options(self, item: str) -> list[Source]:
+        """The Archaeology research team bringing back `item` (archaeology_guild): offline, one expedition at a time,
+        so it comes in like the kingdom's supplies (passive, calendar time), paid in chronotes. How many materials and
+        artefacts an hour returns is a flagged estimate (the wiki lists them without amounts)."""
+        from .. import archaeology_guild as ag
+
+        p = self.ctx.player
+        level = p.level("Archaeology")
+        out = []
+        for site, info in ag.research_sites(level).items():
+            if item in info["materials"]:
+                per_hour, what = ag.RESEARCH_MATERIALS_PER_HOUR / len(info["materials"]), "materials"
+            elif item in info["artefacts"]:
+                per_hour, what = ag.RESEARCH_ARTEFACTS_PER_HOUR / len(info["artefacts"]), "artefacts"
+            else:
+                continue
+            chronotes = self.complete_source("chronotes") if item != "chronotes" else None
+            if chronotes is None:
+                continue
+            cost = ag.research_cost(level, info["factor"])
+            why = (f"{ag.RESEARCH_MATERIALS_PER_HOUR:g} materials / {ag.RESEARCH_ARTEFACTS_PER_HOUR:g} artefacts a "
+                   f"research hour assumed")
+            # Play time: sending the team out (a claim visit a day's worth) and earning the chronotes it costs.
+            hours = CLAIM_VISIT_HOURS / 24 / per_hour + cost / per_hour * chronotes.cost_per_unit
+            out.append(Source("daily", f"send the research team to {site} ({cost:,.0f} chronotes an hour; "
+                                       f"ASSUMED rate: {why})", hours,
+                              xp_per_unit={"Archaeology": ag.research_xp(level, info["factor"]) / per_hour},
+                              calendar_per_unit=1 / per_hour, passive=True, flag=f"research {what} {why}"))
+        return out
+
     def _daily_options(self, item: str) -> list[Source]:
         """NPC hand-outs and repeatable activities (port voyages, Arc contracts) with no rate: a flagged once a day,
         a minute of play each (drops.ASSUMED_RATES["daily"])."""
@@ -570,6 +600,7 @@ class Gatherer:
             options.append(Source("craft", how, hours / out, xp_per_unit={s: v / out for s, v in xp.items()},
                                   recipe=r, unsourced=frozenset(unsourced), unlock=unlock))
         options += self._daily_options(item)
+        options += self._research_options(item)
         if not any(o.complete for o in options):
             # Packs, gifts and caskets holding the item: a fallback for coverage (following every container from
             # every item widens the search for little gain where a complete source exists).
