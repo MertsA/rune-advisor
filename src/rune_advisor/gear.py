@@ -70,6 +70,17 @@ def _same_item(held: str, page: str) -> bool:
 
 
 def owned_equipment(player: PlayerState) -> list[Item]:
+    """The equipment the player holds and meets the requirements of. Cached on the player until its holdings or
+    levels change: kill-rate estimates ask for it thousands of times a plan."""
+    key = (player.holdings_state, tuple((s, k.level) for s, k in player.skills.items()), id(player.item_ids))
+    cached = player.__dict__.get("_owned_equipment")
+    if cached is None or cached[0] != key:
+        cached = (key, _owned_equipment(player))
+        player.__dict__["_owned_equipment"] = cached
+    return list(cached[1])
+
+
+def _owned_equipment(player: PlayerState) -> list[Item]:
     names = set()
     items, ids = equipment()["items"], equipment().get("ids", {})
     for held in player.holdings:

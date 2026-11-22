@@ -103,13 +103,11 @@ def outfit_bonus(player: PlayerState, skill: str) -> tuple[float, str | None]:
 
 
 def porter(player: PlayerState) -> str | None:
-    """What sends gathered items to the bank: the Grace of the Elves (owned) or signs of the porter
-    (only with `porters = true`: a few held signs don't last a plan; they're made with Divination and
-    used up, and that cost isn't counted)."""
-    if has(player, "Grace of the elves*"):
-        return "Grace of the Elves"
+    """What sends gathered items to the bank, taken as always kept up at no cost: only with `porters = true`.
+    Otherwise signs of the porter are a costed option (consumables.py: a charge per item, made with Divination).
+    The Grace of the Elves holds charges but makes none, so owning it isn't a porter by itself."""
     if boosts(player).get("porters"):
-        return "signs of the porter"
+        return "Grace of the Elves" if has(player, "Grace of the elves*") else "signs of the porter"
     return None
 
 

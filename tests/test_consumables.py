@@ -36,7 +36,7 @@ def test_options_follow_summoning_level_and_overrides():
 def test_boosted_rows_carry_their_consumables_as_a_recipe():
     p = _player(Mining=90, Summoning=90, Strength=90)
     plain = {(r["activity"], r["level_min"]): r for r in sim.method_rows(p)}
-    twins = [r for r in sim.boosted_rows(p) if r["boost"] == "Lava Titan" and r["activity"] == "Runite"]
+    twins = [r for r in consumables.boosted_rows(p) if r["boost"] == "Lava Titan" and r["activity"] == "Runite"]
     assert twins
     t = twins[0]
     base = plain[(t["activity"], t["level_min"])]
@@ -46,7 +46,7 @@ def test_boosted_rows_carry_their_consumables_as_a_recipe():
     assert v["materials"] == [["Lava titan pouch", pytest.approx(60 / 64 * per_action)]]
     assert v["xp"] == pytest.approx(t["xp_per_hour"] * per_action)
     # The cost model keeps twins apart: the plain methods and rates don't see them.
-    cost = CostModel.default(player=p, extra_methods=sim.method_rows(p) + sim.boosted_rows(p))
+    cost = CostModel.default(player=p, extra_methods=sim.method_rows(p) + consumables.boosted_rows(p))
     assert all("consumes" not in r for r in cost.available_methods("Mining", 90))
     assert cost.boosted_methods("Mining", 90)
     plain_cost = CostModel.default(player=p, extra_methods=sim.method_rows(p))
@@ -97,7 +97,7 @@ def test_boosted_run_counts_summoning_another_goal_wants(monkeypatch):
 def test_level_plan_takes_the_boost_off_the_grind():
     p = _player(Mining=90, Summoning=90, Strength=90)
     plain = Context(player=p, cost=CostModel.default(player=p, extra_methods=sim.method_rows(p)), urns=False)
-    cost = CostModel.default(player=p, extra_methods=sim.method_rows(p) + sim.boosted_rows(p))
+    cost = CostModel.default(player=p, extra_methods=sim.method_rows(p) + consumables.boosted_rows(p))
     boosted = Context(player=p, cost=cost, urns=False)
     without, plan = plain.level_plan("Mining", 95), boosted.level_plan("Mining", 95)
     # Pouches made from scratch (shards bought, charms from drops) are cheap next to an hour of mining.
@@ -133,3 +133,37 @@ def test_capped_activities_are_not_training_methods():
     cost = CostModel.default()
     assert {r["method"] for r, _ in cost.limited} >= {"Alaea crablet", "Golden bamboo"}
     assert not [r for r in cost.available_methods("Mining", 110) if r["method"] == "Alaea crablet"]
+
+
+def test_other_skills_get_their_boosts():
+    p = _player(Fishing=80, Thieving=50, Archaeology=80, Summoning=80, Divination=99, Mining=80, Woodcutting=80)
+    labels = {s: [o.label for o in consumables.singles(p, s)] for s in consumables.SKILLS}
+    assert "Granite lobster" in labels["Fishing"] and "perfect juju fishing" in labels["Fishing"]
+    assert labels["Thieving"] == ["Magpie"]
+    porter = "signs of the porter (VII)"
+    assert all(porter in labels[s] for s in ("Mining", "Woodcutting", "Fishing", "Archaeology"))
+    # The best sign the player's Divination makes.
+    assert "signs of the porter (IV)" in [o.label for o in consumables.singles(_player(Divination=70), "Archaeology")]
+    rows = consumables.boosted_rows(p)
+    by = {(r["skill"], r["boost"]) for r in rows}
+    assert ("Fishing", "Granite lobster") in by and ("Thieving", "Magpie") in by
+    # Porters: a charge per item, so a sign per 50 materials at the hotspot's rate (no more 25% of hits lost).
+    arch = next(r for r in rows if r["skill"] == "Archaeology" and r["boost"] == porter)
+    assert arch["consumes"]["Sign of the porter VII"] == pytest.approx(sum(arch["yields"].values()) / 50)
+    plain = next(r for r in sim_rows(p, "Archaeology") if r["method"] == arch["base_method"]
+                 and r["level_min"] == arch["level_min"])
+    assert arch["xp_per_hour"] > plain["xp_per_hour"]
+
+
+def sim_rows(p, skill):
+    return consumables._sim_rows(p, skill)
+
+
+def test_owning_the_grace_of_the_elves_is_not_free_porters():
+    from rune_advisor.mechanics import profile
+
+    p = _player(Divination=99)
+    p.inventories = {"BANK": {"Grace of the elves": 1}}
+    assert profile.porter(p) is None  # it holds charges, makes none
+    p.boosts = {"porters": True}
+    assert profile.porter(p) == "Grace of the Elves"

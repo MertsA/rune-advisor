@@ -523,7 +523,7 @@ class Context:
 
     def _boosted_run(self, twins: list[dict], xp: float, stock: dict[str, int],
                      group: dict[str, dict[str, int]] | None, plain_hours: float) -> MaterialRun | None:
-        """The consumable-boost twin (sim.boosted_rows) that gets `xp` cheapest, counting the time to make what
+        """The consumable-boost twin (consumables.boosted_rows) that gets `xp` cheapest, counting the time to make what
         the stock lacks net of its by-products (making pouches is Summoning xp other goals may want), or None
         when none beats `plain_hours`. Consumables already held are used first and cost nothing."""
         best = None

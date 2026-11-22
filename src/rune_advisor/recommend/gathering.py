@@ -203,7 +203,7 @@ class Gatherer:
         self._estimated: set[str] = set()
         self._worded: set[tuple[str, str]] = set()  # (item, spot) whose drop chance is a worded rarity's guess
         self._side_xp: dict[str, dict[str, float]] = {}  # method -> other skills' xp per hour
-        # Spots that are consumable-boost twins (sim.boosted_rows): method -> what they use up per hour.
+        # Spots that are consumable-boost twins (consumables.boosted_rows): method -> what they use up per hour.
         self._consumes: dict[str, dict[str, float]] = {}
         self._consumable_cost: dict[str, float] = {}
         self._in_progress: set[str] = set()  # items source() is still working out (recipe cycles)

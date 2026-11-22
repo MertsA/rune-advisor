@@ -150,7 +150,7 @@ def custom_row(m: dict) -> dict:
             **({"actions_per_hour": float(m["actions_per_hour"])} if m.get("actions_per_hour") else {}),
             # Invention twins (mechanics/item_xp.py) remember the method they ride on.
             **({k: m[k] for k in ("base_skill", "base_method") if m.get(k)}),
-            # Consumable-boost twins (sim.boosted_rows): what the boost uses up per hour, and its label.
+            # Consumable-boost twins (consumables.boosted_rows): what the boost uses up per hour, and its label.
             **({"consumes": dict(m["consumes"]), "boost": m.get("boost")} if m.get("consumes") else {}),
             # Measured attention (radv session): game actions per hour and the median gap between inputs.
             "clicks_per_hour": m.get("clicks_per_hour"), "input_gap_s": m.get("input_gap_s"),
@@ -236,7 +236,7 @@ class CostModel:
     replaced: list[tuple[str, str, str]] = field(default_factory=list)
     # Basis of each band's rate ("simulated", "quoted"...), keyed like `methods`.
     band_basis: dict[tuple[str, int], str] = field(default_factory=dict)
-    # "With <boost>" twins of simulated rows (sim.boosted_rows), per skill: kept out of wiki_rows and the rate
+    # "With <boost>" twins of simulated rows (consumables.boosted_rows), per skill: kept out of wiki_rows and the rate
     # bands, so plain rates stay unboosted; the material-aware planner weighs them with their consumables.
     boosted: dict[str, list[dict]] = field(default_factory=dict)
     # Capped activities' rows (limited_activity), out of training: (row, why). For daily planning later.
@@ -320,7 +320,7 @@ class CostModel:
         return sorted(rows, key=typical_rate, reverse=True)
 
     def boosted_methods(self, skill: str, level: int) -> list[dict]:
-        """The consumable-boost twins (sim.boosted_rows) usable at a level, fastest first."""
+        """The consumable-boost twins (consumables.boosted_rows) usable at a level, fastest first."""
         rows = [r for r in self.boosted.get(skill, [])
                 if r["level_min"] <= level and (r.get("level_max") is None or r["level_max"] >= level)]
         return sorted(rows, key=typical_rate, reverse=True)
