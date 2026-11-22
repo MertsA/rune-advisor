@@ -32,7 +32,7 @@ CRAFT_INVENTION = 20
 # Each outfit's fragment page gives its drop size and interval (data: per_drop, minutes; x2 at 99, x3 at 120, x4 at
 # 200m xp) and a 1/2,500 chance per drop of a bonus 3,600. The cooldown is shared by all outfits.
 BONUS_FRAGMENTS, BONUS_CHANCE = 3600, 1 / 2500
-FLOORS_PER_HOUR = 4  # Dungeoneering drops per floor: an assumption (large floors, ~15 min each)
+FLOORS_PER_HOUR = 4  # Dungeoneering drops per floor, free-to-play: an assumption (members use the floor model's time)
 SEEN_FILE = STATE_DIR / "seen_items.json"
 
 
@@ -50,7 +50,13 @@ def fragments_per_hour(player: PlayerState, skill: str) -> float:
     s = player.skills.get(SKILL_ALIASES.get(skill, skill))
     level, xp = (s.level, s.xp) if s else (1, 0)
     mult = 4 if xp >= 200_000_000 else 3 if level >= 120 else 2 if level >= 99 else 1
-    drops = 60 / data["minutes"] if data.get("minutes") else FLOORS_PER_HOUR
+    if data.get("minutes"):
+        drops = 60 / data["minutes"]
+    elif player.members:  # Dungeoneering: a drop per floor, at the floor model's time (mechanics/dungeoneering.py)
+        from .mechanics.dungeoneering import floor_minutes
+        drops = 60 / floor_minutes(player)[0]
+    else:
+        drops = FLOORS_PER_HOUR
     return drops * (data["per_drop"] * mult + BONUS_FRAGMENTS * BONUS_CHANCE)
 
 

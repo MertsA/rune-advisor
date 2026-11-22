@@ -146,10 +146,16 @@ def _dungeoneering_tokens(ctx: Context) -> tuple[float, str, dict[str, float], f
       each (Large dungeoneering token box page), at what the collection costs: its artefacts excavated and restored
       at the hotspots (mechanics/archaeology.py, catalogue.collection_recipes)."""
     p = ctx.player
+    from .mechanics import dungeoneering
+
     lvl = p.level("Dungeoneering")
-    floor_xp = SOLO_FLOOR_XP_PER_HOUR * min(1.0, lvl / 99)
+    floor_xp = dungeoneering.xp_per_hour(p) if p.members else SOLO_FLOOR_XP_PER_HOUR * min(1.0, lvl / 99)
+    minutes, measured = dungeoneering.floor_minutes(p)
+    rate = f"~{floor_xp:,.0f} floor xp an hour at {minutes:g} min a solo large floor" if p.members \
+        else f"ASSUMED rate: ~{floor_xp:,.0f} floor xp an hour"
     best = (1 / (TOKEN_SHARE * floor_xp),
-            f"solo Dungeoneering floors (tokens are 20% of floor xp; ASSUMED rate: ~{floor_xp:,.0f} floor xp an hour)",
+            f"solo Dungeoneering floors (tokens are 20% of floor xp; {rate}"
+            + ("" if measured or not p.members else ", ASSUMED") + ")",
             {"Dungeoneering": 1 / TOKEN_SHARE}, 0.0)
     # Large Dungeoneering token boxes (the Dragonkin V/VI collections' repeat reward, catalogue.collection_recipes):
     # opened for 5/4 x level^2 + 50 tokens each, at what the gatherer says a box costs (excavating and restoring

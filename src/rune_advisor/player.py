@@ -536,6 +536,7 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
     for currency, var_name in CURRENCY_VARS.items():
         if isinstance(p.vars.get(var_name), int) and p.vars[var_name] >= 0:
             p.currencies[currency] = p.vars[var_name]
+    sync_currency_inventory(p)
     for tool, label in belt_tools(p.vars).items():
         p.tools[tool] = label  # overrides.toml's  /  still win
     if (task := slayer_task_from_vars(p.vars)) is not None:
@@ -647,6 +648,20 @@ def apply_group_storage(p: PlayerState, raw: dict[str, Any]) -> None:
     p.notes.append(f"group storage (overrides.toml): {len(items)} item kinds counted as held")
 
 
+# Currency balances the reward shops take, as the gatherer's stock (inventory CURRENCIES): a shop recipe's price comes
+# out of the balance before any earning is costed, and a joint plan's goals use it up in turn (2026-11-22). Goebie
+# reputation is left out: the shops name several reputations alike.
+SHOP_CURRENCIES = {"Dungeoneering tokens", "Slayer points", "Marks of War"}
+
+
+def sync_currency_inventory(p: PlayerState) -> None:
+    held = {c: n for c, n in p.currencies.items() if c in SHOP_CURRENCIES and n > 0}
+    if held:
+        p.inventories["CURRENCIES"] = held
+    else:
+        p.inventories.pop("CURRENCIES", None)
+
+
 def apply_overrides(p: PlayerState, raw: dict[str, Any]) -> None:
     apply_group_storage(p, raw)
     mine = _player_overrides(p, raw)
@@ -661,6 +676,7 @@ def apply_overrides(p: PlayerState, raw: dict[str, Any]) -> None:
     # currencies = { "Dungeoneering tokens" = 250000 }: balances the export lacks (an exported one is overridden).
     for currency, amount in mine.get("currencies", {}).items():
         p.currencies[currency] = int(amount)
+    sync_currency_inventory(p)
     if "penguin_points" in mine:  # penguin_points = 184: only needed while the export lacks PENG_SPY_PERM1
         exported = penguin_points_from_var(p.vars)
         p.penguin_points = int(mine["penguin_points"])

@@ -26,7 +26,7 @@ from ..mechanics.processing import capped, effective
 
 # Workbench recipes whose own speed holds (not capped at the skill's rate): restoring is fast and fed by gathering,
 # so the gathering, costed separately, is what limits it (Context._recipe_band_run).
-UNCAPPED_FACILITIES = {"Archaeologist's workbench"}
+UNCAPPED_FACILITIES = {"Archaeologist's workbench", "Daemonheim Rewards"}  # recipes whose speed is their own
 from ..resources import LevelPlan, ResourcePool, plan_level
 from ..sources.wiki import QuestInfo
 from ..xp import level_at_xp, level_cap, xp_at
@@ -625,6 +625,9 @@ class Context:
         if skill == "Archaeology":  # restoring what each hotspot digs up, mixed as it's found
             from ..mechanics.archaeology import restoration_mixes
             extra = restoration_mixes(level)
+        if skill == "Dungeoneering":  # Dragonkin token boxes opened and their tokens traded for xp
+            from ..mechanics.dungeoneering import box_recipes
+            extra = box_recipes(self.player, level)
         for r in catalogue() + extra:
             if r["skill"] != skill or r.get("conversion") or r.get("daemonheim") or r["level"] > level \
                     or not _usable(r, self.player):  # Daemonheim recipes: inside a dungeon only, no training

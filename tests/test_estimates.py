@@ -88,7 +88,8 @@ def test_dungeoneering_tokens_cheapest_way(monkeypatch):
 
     ctx = Context(player=_player(Dungeoneering=100, Archaeology=60), cost=CostModel.default(use_wiki=False))
     hours, how, xp, _ = currencies.earning(ctx, "Dungeoneering tokens")
-    assert "floors" in how and hours == pytest.approx(1 / (0.2 * currencies.SOLO_FLOOR_XP_PER_HOUR))
+    from rune_advisor.mechanics import dungeoneering
+    assert "floors" in how and hours == pytest.approx(1 / (0.2 * dungeoneering.xp_per_hour(ctx.player)))
     assert xp == {"Dungeoneering": 5.0}  # 5 floor xp a token
     # A token box (Dragonkin V/VI's repeat reward) at what the gatherer says it costs: opened for 1.25 L^2 + 50.
     from rune_advisor.recommend.gathering import Source

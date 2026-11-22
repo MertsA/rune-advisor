@@ -80,7 +80,7 @@ def covers(sim_activity: str, guide_method: str) -> bool:
 
 def all_rows(player: PlayerState) -> list[dict]:
     """Every simulated method row for the player."""
-    from . import archaeology, combat, farming, fishing, magic, rituals, smithing, thieving
+    from . import archaeology, combat, dungeoneering, farming, fishing, magic, rituals, smithing, thieving
     from .. import sim
 
     from . import item_xp
@@ -88,7 +88,7 @@ def all_rows(player: PlayerState) -> list[dict]:
     from .combat import GUIDE_STYLE
 
     rows = sim.method_rows(player)
-    for module in (fishing, thieving, magic, smithing, rituals, farming, archaeology, combat):
+    for module in (fishing, thieving, magic, smithing, rituals, farming, archaeology, combat, dungeoneering):
         rows += module.method_rows(player)
     # Invention twins of every method the player can run in augmented gear: the sims' rows plus the guides' rows
     # for the skilling skills the sims don't cover (combat guide rows are already re-rated by combat.method_rows).

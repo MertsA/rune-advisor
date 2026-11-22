@@ -528,7 +528,8 @@ def test_exporter_end_to_end_plan(tmp_path):
 
     # Inventories arrive as item ids and counts (no placeholders on the wire) and are named by the server.
     assert p.bank["Huge XP lamp"] == 12 and p.bank["Logs"] == 120 and "Astral rune" not in p.bank
-    assert set(p.inventories) == {"BANK", "INV", "WORN", "METAL_BANK", "ORE_BOX", "STATUE_BAG", "MATERIALS_STORAGE", "CRAMULET"}
+    assert set(p.inventories) == {"BANK", "INV", "WORN", "METAL_BANK", "ORE_BOX", "STATUE_BAG", "MATERIALS_STORAGE", "CRAMULET",
+                                  "CURRENCIES"}  # exported Slayer points etc. are the gatherer's stock
     assert p.inventories["METAL_BANK"] == {}  # loaded empty: known, not unknown
     # The Invention materials storage and the cramulet's amulets come from named vars, read as containers.
     assert p.inventories["MATERIALS_STORAGE"] == {"Base parts": 3100, "Junk": 900}

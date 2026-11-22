@@ -255,6 +255,56 @@ def _crafted(ctx: Context) -> list[Candidate]:
     return out
 
 
+def _bought_gains(ctx: Context) -> dict[str, tuple[str, float]]:
+    """{item: (style, gain)} for combat gear a shop sells (coins or a reward currency: chaotics and gravite for
+    Dungeoneering tokens) that beats the owned loadout, the best per style and slot."""
+    p = ctx.player
+    owned = {i.name for i in owned_equipment(p)}
+    base = {s: damage_score(p, best_loadout(p, s)) for s in STYLES}
+    out = {}
+    for name in equipment()["items"]:
+        if name in owned:
+            continue
+        src = ctx.gatherer.complete_source(name)
+        if src is None or not (src.kind == "shop" or (src.recipe or {}).get("currency_shop")):
+            continue
+        item = _item(name)
+        if item is None or not (item.damage or item.bonus):
+            continue
+        for style in ([item.cls] if item.cls in STYLES else STYLES if item.cls in ("hybrid", "all") else []):
+            gain = damage_score(p, best_loadout(p, style, [item])) / base[style] - 1
+            if gain >= MIN_GAIN and gain > out.get(name, ("", 0))[1]:
+                out[name] = (style, gain)
+    best: dict[tuple[str, str], str] = {}
+    for name, (style, gain) in out.items():
+        key = (style, _item(name).slot)
+        if key not in best or gain > out[best[key]][1]:
+            best[key] = name
+    return {n: out[n] for n in best.values()}
+
+
+def _bought(ctx: Context) -> list[Candidate]:
+    """Shop gear that beats the owned loadout: its price from the balance the player holds (reward currencies are the
+    gatherer's stock: player.sync_currency_inventory), the rest earned, plus the levels to wear it."""
+    out = []
+    for name, (style, gain) in _bought_gains(ctx).items():
+        g = ctx.gatherer.plan({name: 1})
+        if g.short:
+            continue
+        unlocks = _unlocks(ctx, "", [name])
+        gross = g.hours + g.coins / gathering.COINS_PER_HOUR + unlocks.hours
+        saved = upgrade_hours_saved(ctx, style, gain)
+        hours = max(MIN_REWARD_SHARE * gross, gross - saved)
+        out.append(Candidate(
+            track="gear", title=f"buy {name} (+{gain:.0%} {style} damage)", value=round(100 * gain, 1), unit="% gain",
+            cost_hours=round(hours, 2), details=[*g.steps, *unlocks.steps], uncertain=unlocks.uncertain,
+            why=f"+{gain:.0%} {style} damage over your best owned, from a shop"
+            + (f"; faster kills save ~{saved:.1f}h of your remaining {style} training (cost {gross:.1f}h -> {hours:.1f}h)"
+               if saved >= 0.05 else ""),
+            skills=set(unlocks.skills), needs=unlocks.needs, unknowns=unlocks.unknowns))
+    return out
+
+
 def _wanted(ctx: Context) -> list[Candidate]:
     """Items the user asked for (overrides.toml `wanted`), costed like crafted upgrades: dropped inputs as kills,
     the rest gathered, no damage-gain test (the user's reasons are their own)."""
@@ -366,6 +416,7 @@ class _Gear:
                     + (["kill rate estimated from gear"] if "estimated" in how else []),
                 ))
         out += _crafted(ctx)
+        out += _bought(ctx)
         out += _wanted(ctx)
         # The same pieces from several monsters (Morrigan's from every revenant): keep the fastest.
         best: dict[str, Candidate] = {}
