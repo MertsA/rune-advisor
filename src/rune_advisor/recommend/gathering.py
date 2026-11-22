@@ -233,7 +233,9 @@ class Gatherer:
         self._estimated: set[str] = set()
         self._worded: set[tuple[str, str]] = set()  # (item, spot) whose drop chance is a worded rarity's guess
         self._side_xp: dict[str, dict[str, float]] = {}  # method -> other skills' xp per hour
-        self._spot_yields: dict[str, dict[str, float]] = {}  # gathering spots yielding 2+ items: method -> per hour
+        self._spot_yields: dict[str, dict[str, float]] = {}
+        self._spot_info_cache: dict[str, tuple[str, float]] | None = None
+        self._junk_tier: int | None = None  # gathering spots yielding 2+ items: method -> per hour
         # Spots that are consumable-boost twins (consumables.boosted_rows): method -> what they use up per hour.
         self._consumes: dict[str, dict[str, float]] = {}
         self._consumable_cost: dict[str, float] = {}
@@ -315,6 +317,18 @@ class Gatherer:
             src = self.complete_source(item)
             self._consumable_cost[item] = self.net_cost(src) if src is not None else float("inf")
         return self._consumable_cost[item]
+
+    def _spot_info(self) -> dict[str, tuple[str, float]]:
+        """Spot -> (its skill, xp/h), over the drop index (built once)."""
+        if self._spot_info_cache is None:
+            self._spot_info_cache = {m: (skill, rate) for rows in self._drops().values() for m, skill, _, rate in rows}
+        return self._spot_info_cache
+
+    def junk_tier(self) -> int:
+        """disassembly.junk_tier for this plan's player, worked out once (it scans every achievement)."""
+        if self._junk_tier is None:
+            self._junk_tier = dis.junk_tier(self.ctx.player)
+        return self._junk_tier
 
     def multi_yield_spots(self) -> dict[str, dict[str, float]]:
         """Gathering spots the player can use that yield several items at once (the fish farm's pools, mixed ore
@@ -487,6 +501,8 @@ class Gatherer:
                         self._worded.add((name, spot))
             for name, per_hour in best.items():
                 index.setdefault(name, []).append((spot, skill, per_hour, xph))
+            if best:
+                self._spot_info()[spot] = (skill, xph)
 
     def source(self, item: str) -> Source | None:
         """The fastest way to get one more `item` (cached). Complete chains win over ones with unsourced
@@ -643,7 +659,7 @@ class Gatherer:
         p = self.ctx.player
         if not p.members or p.level("Invention") < 1 or material not in dis.sources():
             return []
-        tier, out = dis.junk_tier(p), []
+        tier, out = self.junk_tier(), []
         for item in dis.sources()[material]:
             if item == material or not (y := dis.per_item(item, material, tier)) or y.mean <= 0:
                 continue
@@ -923,7 +939,7 @@ class Gatherer:
             g.coins += gp
             short = {k: v for k, v in short.items() if k != "Coins"}
         sources = {item: self.source(item) for item in short}
-        tier = dis.junk_tier(self.ctx.player)
+        tier = self.junk_tier()
 
         def disassemblies(item: str) -> int:
             src = sources[item]
@@ -1252,8 +1268,9 @@ class Gatherer:
         """Get dropped items with as few hours at spots as possible: a spot drops several items at once,
         so time spent there for one item also collects the others (the longest need sets the visit). A boosted
         spot (a familiar, juju kept up) counts what it uses up, and those consumables are planned after."""
+        if not needs:
+            return
         index = self._drops()
-        info = {m: (skill, rate) for rows in index.values() for m, skill, _, rate in rows}
         visits: dict[str, float] = {}
 
         def collected(item: str) -> float:
@@ -1284,7 +1301,7 @@ class Gatherer:
                 del visits[m]
                 visits[plain] = visits.get(plain, 0) + hours * ratio
         for m, hours in sorted(visits.items(), key=lambda kv: -kv[1]):
-            skill, rate = info[m]
+            skill, rate = self._spot_info()[m]
             got = [f"{min(n, per_hour * hours):,.0f} {i}" + (" (worded rarity: chance assumed)" if (i, m) in self._worded else "")
                    for i, n in needs.items() for mm, _, per_hour, _ in index.get(i, []) if mm == m and per_hour * hours >= 1]
             g.hours += hours
