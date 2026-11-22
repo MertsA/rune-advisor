@@ -6,7 +6,8 @@ Each hit succeeds (a material) with 0.21 + 1.11% per point of the mattock's Focu
 it deals the mattock's Precision to the hotspot's hitpoints, and every `hitpoints / precision` hits
 finds an artefact. xp/h = misses x fail xp + materials x success xp + artefacts x (artefact xp +
 restoration xp), times the xp boosts (Archaeologist's outfit, Wise, clan avatar), as the calculator's
-AFK total. Materials split by the hotspot's weights (restoring uses some of them; not netted here).
+AFK total. Materials and artefacts split by the hotspot's weights. Restoration (recipe catalogue: the damaged
+artefact plus materials) is a second row per hotspot whose materials are netted (`restoring`).
 
 Time sprites ("High Intensity", a second row per hotspot): hits at SPRITE_ACTIVITY of the calculator's
 1,500/h maximum, +5% success (40% sprite focus at 2% a hit), precision x1.1 x SPRITE_PRECISION, and +20% on
@@ -72,20 +73,62 @@ def hotspot_rates(player: PlayerState, level: int | None = None, sprites: bool =
         restore_xp = sum(restore) / len(restore) if restore else 0
         xp = ((hits * (1 - success) * fail + mats * succ + artefacts * art) * find_boost + artefacts * restore_xp) * boost
         weights = sum(w for _, w in h.get("materials") or []) or 1
+        art_weights = sum(w for _, w in h.get("artefacts") or []) or 1
         out.append({"hotspot": name, "level": h["level"], "xp_per_hour": xp, "artefacts_per_hour": artefacts,
+                    "excavation_xp_per_hour": xp - artefacts * restore_xp * boost,
                     "materials": {mat: mats * w / weights for mat, w in h.get("materials") or []},
+                    "artefacts": {art: artefacts * w / art_weights for art, w in h.get("artefacts") or []},
                     "mattock": f"{mname} mattock" + (", assumed" if assumed else "")})
     return out
 
 
+def restoration(damaged: str) -> dict | None:
+    """The restoration recipe for a damaged artefact (recipe catalogue: the artefact from its damaged self and
+    materials at an archaeologist's workbench), or None."""
+    from ..recommend.catalogue import by_output
+
+    restored = damaged.removesuffix(" (damaged)")
+    return next((r for r in by_output().get(restored, []) if r["skill"] == "Archaeology"
+                 and any(m == damaged for m, _ in r["materials"])), None)
+
+
+def restoring(h: dict) -> tuple[dict[str, float], dict[str, float]]:
+    """(yields, consumes) per hour restoring every artefact as it's found: the restored artefacts and the hotspot's
+    materials less what restoring takes; what the hotspot doesn't give enough of is used up from elsewhere."""
+    net = dict(h["materials"])
+    yields: dict[str, float] = {}
+    for damaged, per_hour in h["artefacts"].items():
+        r = restoration(damaged)
+        if r is None:
+            yields[damaged] = yields.get(damaged, 0) + per_hour  # no recipe known: kept damaged
+            continue
+        yields[r["output"]] = yields.get(r["output"], 0) + per_hour * r["output_qty"]
+        for mat, qty in r["materials"]:
+            if mat != damaged:
+                net[mat] = net.get(mat, 0) - per_hour * qty
+    yields.update({m: v for m, v in net.items() if v > 1e-9})
+    return yields, {m: -v for m, v in net.items() if v < -1e-9}
+
+
 def method_rows(player: PlayerState) -> list[dict]:
+    """Two rows per hotspot and band: excavating only (materials and damaged artefacts, no restoration xp), and
+    restoring each artefact as it's found (its xp, the restored artefacts, the hotspot's materials net of what
+    restoring takes). Where restoring needs more of a material than the hotspot gives, the row `consumes` it
+    (cost.consuming_row): the planner then restores only when getting those materials is worth the xp."""
     rows = []
     for band in bands(player, "Archaeology"):
         for sprites in (False, True):
             for h in hotspot_rates(player, band, sprites):
                 how = "time sprites, " if sprites else ""
-                rows.append(row("Archaeology", f"{h['hotspot']} (simulated, {how}{h['mattock']})", max(band, h["level"]),
-                                band + 4, h["xp_per_hour"], yields=h["materials"],
-                                assumptions=[f"time sprites at {SPRITE_ACTIVITY:.0%} activity" if sprites else "AFK hit rate"],
-                                activity=h["hotspot"], afk=not sprites))
+                base = dict(activity=h["hotspot"], afk=not sprites,
+                            assumptions=[f"time sprites at {SPRITE_ACTIVITY:.0%} activity" if sprites else "AFK hit rate"])
+                level = max(band, h["level"])
+                rows.append(row("Archaeology", f"{h['hotspot']} (simulated, {how}{h['mattock']})", level, band + 4,
+                                h["excavation_xp_per_hour"], yields={**h["materials"], **h["artefacts"]}, **base))
+                yields, consumes = restoring(h)
+                r = row("Archaeology", f"{h['hotspot']} restoring as found (simulated, {how}{h['mattock']})", level,
+                        band + 4, h["xp_per_hour"], yields=yields, **base)
+                if consumes:
+                    r["consumes"] = consumes
+                rows.append(r)
     return rows

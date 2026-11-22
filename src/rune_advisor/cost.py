@@ -277,8 +277,8 @@ class CostModel:
         excluded, replaced, band_basis = [], [], {}
         boosted: dict[str, list[dict]] = {}
         for m in extra_methods or []:
-            if m.get("consumes"):
-                boosted.setdefault(m["skill"], []).append(custom_row(m))
+            if m.get("consumes"):  # twins (consumables.py) carry a recipe; other consuming rows get one
+                boosted.setdefault(m["skill"], []).append(consuming_row(custom_row(m)))
         extra_methods = [m for m in extra_methods or [] if not m.get("consumes")]
         if use_wiki:
             rows = _load_wiki_rates(members) + [custom_row(m) for m in extra_methods]

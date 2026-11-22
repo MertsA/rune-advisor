@@ -237,6 +237,7 @@ class Gatherer:
         self._cycle_hits: set[str] = set()  # open items the current lookup ran into (source())
         self._provisional: dict[str, tuple[Source | None, frozenset[str]]] = {}  # answers valid while those stay open
         self._training_rate: float | None = None
+        self._activities: frozenset[str] | None = None
         self._sim_memo: dict[str, Source | None] = {}
         self._boost_memo: dict[str, Source | None] = {}
         self._spots_added: set[str] = set()
@@ -315,13 +316,23 @@ class Gatherer:
             return float("inf")
         return 1.0 + sum(n * self.consumable_hours(i) for i, n in uses.items())
 
+    def _modelled_activities(self) -> frozenset[str]:
+        """Activities a guide or simulated row rates (a hotspot, a tree): their drop pages need no guessed rate."""
+        if self._activities is None:
+            cost = self.ctx.cost
+            self._activities = frozenset(r.get("activity") or r["method"] for rows in (*cost.wiki_rows.values(),
+                                                                                        *cost.boosted.values())
+                                         for r in rows)
+        return self._activities
+
     def _daily_options(self, item: str) -> list[Source]:
         """NPC hand-outs and repeatable activities (port voyages, Arc contracts) with no rate: a flagged once a day,
         a minute of play each (drops.ASSUMED_RATES["daily"])."""
         out = []
         for src, chance, qty in sources_of(item):
             c, guessed = drop_chance(chance)
-            if not c or source_kind(src) not in DAILY_KINDS or EXCLUDED_SOURCES.search(src):
+            if not c or source_kind(src) not in DAILY_KINDS or EXCLUDED_SOURCES.search(src) \
+                    or src in collection_names():
                 continue
             per = c * (qty or 1)
             why = ASSUMED_RATES["daily"][1]
@@ -384,8 +395,10 @@ class Gatherer:
             est = estimated_kills_per_hour(self.ctx.player, src, self.ctx.combat_style)
             if est is None:
                 # No kill or catch rate: a flagged estimate rather than no source (drops.ASSUMED_RATES).
-                if self._is_item(src):
-                    continue  # a pack, gift or casket: opened (_container_options), not farmed
+                if self._is_item(src) or src in self._modelled_activities() or src in collection_names():
+                    # a pack, gift or casket (opened: _container_options); a source a simulated or guide row already
+                    # rates (a hotspot: a guess never stands in for real data); an Archaeology collection (handed in)
+                    continue
                 if (assumed := assumed_rate(self.ctx.player, src, self.ctx.combat_style)) is None:
                     continue
                 kph, skill, xph, why = assumed
@@ -851,6 +864,11 @@ class Gatherer:
                 if r["skill"] == "Smithing" and where == "Anvil" and r["xp"] and respect.open_rewards(self.ctx.player):
                     pct = respect.percent_for(self.ctx.player, r["xp"] * actions)
                     earns = f"; at the Artisans' Workshop that is +{pct:.1f}% respect" if pct >= 0.05 else ""
+                if r.get("collection"):  # an Archaeology collection handed in (catalogue.collection_recipes)
+                    g.steps.append(f"hand in the {r['collection']} collection {actions:,}x for {n:,} {item}"
+                                   + (f", gathering {', '.join(f'{v:,} {k}' for k, v in need.items())}" if need else ""))
+                    self._merge(g, self._plan(need, stock, extra))
+                    continue
                 if r.get("currency_shop") or not r["skill"]:  # reward shops, merchants, NPC services
                     price = ", ".join(f"{math.ceil(q * actions):,} {m}" for m, q in r["materials"])
                     place = f" at {where}" if where else ""
@@ -1169,6 +1187,13 @@ def gathered() -> list[dict]:
 def seeds() -> list[dict]:
     path = datapkg.path("recipe_catalogue.json")
     return json.loads(path.read_text()).get("seeds", []) if path.is_file() else []
+
+
+@cache
+def collection_names() -> frozenset[str]:
+    from .catalogue import archaeology_collections
+
+    return frozenset(archaeology_collections()["collections"])
 
 
 @cache

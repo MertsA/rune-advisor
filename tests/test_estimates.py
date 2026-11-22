@@ -90,7 +90,36 @@ def test_dungeoneering_tokens_cheapest_way(monkeypatch):
     hours, how, xp, _ = currencies.earning(ctx, "Dungeoneering tokens")
     assert "floors" in how and hours == pytest.approx(1 / (0.2 * currencies.SOLO_FLOOR_XP_PER_HOUR))
     assert xp == {"Dungeoneering": 5.0}  # 5 floor xp a token
-    ctx = Context(player=_player(Dungeoneering=100, Archaeology=120), cost=CostModel.default(use_wiki=False))
-    hours, how, _, _ = currencies.earning(ctx, "Dungeoneering tokens")
+    # A token box (Dragonkin V/VI's repeat reward) at what the gatherer says it costs: opened for 1.25 L^2 + 50.
+    from rune_advisor.recommend.gathering import Source
+
+    box = Source("craft", "hand in Dragonkin V", 0.1, xp_per_unit={"Archaeology": 10_000.0})
+    monkeypatch.setattr(ctx.gatherer, "complete_source", lambda item: box if item == currencies.TOKEN_BOX else None)
     per_box = 1.25 * 100 ** 2 + 50
-    assert "Dragonkin V" in how and hours == pytest.approx(1 / (currencies.DRAGONKIN_V_PER_HOUR * 2 * per_box))
+    hours, how, xp, _ = currencies.earning(ctx, "Dungeoneering tokens")
+    assert currencies.TOKEN_BOX in how and hours == pytest.approx(0.1 / per_box)
+    assert xp == {"Archaeology": pytest.approx(10_000 / per_box)}
+
+
+def test_hotspots_yield_artefacts_and_restoring_nets_materials(monkeypatch):
+    from rune_advisor.mechanics import archaeology
+
+    recipe = {"skill": "Archaeology", "output": "Pot", "output_qty": 1.0, "level": 1, "xp": 100.0, "ticks": 10.0,
+              "materials": [["Pot (damaged)", 1.0], ["Clay", 10.0], ["Rare dust", 2.0]], "members": True,
+              "quests": [], "other_skills": [], "facility": ""}
+    monkeypatch.setattr(archaeology, "restoration", lambda d: recipe if d == "Pot (damaged)" else None)
+    h = {"materials": {"Clay": 100.0, "Sand": 50.0}, "artefacts": {"Pot (damaged)": 4.0, "Vase (damaged)": 1.0}}
+    yields, consumes = archaeology.restoring(h)
+    assert yields == {"Pot": 4.0, "Vase (damaged)": 1.0, "Clay": 60.0, "Sand": 50.0}  # 40 clay restored into pots
+    assert consumes == {"Rare dust": 8.0}  # not from this hotspot: used up from elsewhere
+
+
+def test_collections_are_hand_ins(monkeypatch):
+    from rune_advisor.recommend import catalogue
+
+    monkeypatch.setattr(catalogue, "archaeology_collections", lambda: {"collections": {"Kin": {
+        "artefacts": ["A", "B"], "chronotes": 500.0, "bonus_chronotes": 250.0, "rewards": {"Box": 2.0},
+        "level": 77, "members": True}}, "artefact_chronotes": {}})
+    made = {r["output"]: r for r in catalogue.collection_recipes()}
+    assert made["chronotes"]["output_qty"] == 500 and made["Box"]["output_qty"] == 2
+    assert made["Box"]["materials"] == [["A", 1.0], ["B", 1.0]] and made["Box"]["level"] == 77

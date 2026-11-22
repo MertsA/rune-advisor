@@ -11,7 +11,7 @@ currency itself is earned (`earning`) at a rate from its wiki page:
   * Thaler: 1 every 5 minutes in a Minigame Spotlight minigame (1 a minute on the spotlighted one, not assumed).
   * Runespan points: ~3,000 an hour at 99 Runecrafting (Runespan points page), scaled down below 99.
   * Void knight commendations: 4 a Veteran boat win (Pest Control page); a game every PEST_CONTROL_MINUTES.
-  * Dungeoneering tokens: solo floors (20% of floor xp) or the Dragonkin V collection, whichever is cheaper
+  * Dungeoneering tokens: solo floors (20% of floor xp) or Dragonkin collection token boxes, whichever is cheaper
     (`_dungeoneering_tokens`). Slayer points and pilfer points: the rates the toolbelt track uses.
   * Chimes: selling Arc commodities at the Waiko market (`arc_recipes`, data/arc_commodities.json, base prices);
     the 20,000-a-day trade cap isn't modelled.
@@ -50,8 +50,7 @@ PILFER_POINTS_PER_HOUR = 900.0  # as tracks/toolbelt.py
 # Dungeoneering tokens (_dungeoneering_tokens).
 TOKEN_SHARE = 0.2  # tokens per floor xp
 SOLO_FLOOR_XP_PER_HOUR = 150_000.0  # solo floors at 99+: an estimate, flagged
-DRAGONKIN_V_LEVEL = 77
-DRAGONKIN_V_PER_HOUR = 3.0  # collections an hour at 120 Archaeology (Dragonkin V page)
+TOKEN_BOX = "Large dungeoneering token box"
 TASK_OVERHEAD_MINUTES = 3.0  # getting a reaper task from Death and reaching the boss: an assumption
 
 
@@ -143,25 +142,25 @@ def _dungeoneering_tokens(ctx: Context) -> tuple[float, str, dict[str, float], f
 
     * floors: tokens are 20% of a completed floor's xp (Dungeoneering tokens page; bonus xp doesn't count), at
       SOLO_FLOOR_XP_PER_HOUR (an estimate: the guides quote only team rates, which the skill's hand-written rate is);
-    * the Dragonkin V collection (77 Archaeology): two large token boxes of 5/4 x Dungeoneering level^2 + 50 tokens
-      each a completion (Large dungeoneering token box page), at DRAGONKIN_V_PER_HOUR at 120 Archaeology ("at least
-      3 an hour" at 120/120, Dragonkin V page), scaled by the player's Archaeology rate (an estimate: the artefacts'
-      restoration isn't modelled)."""
+    * large Dungeoneering token boxes, two a Dragonkin V or VI completion, 5/4 x Dungeoneering level^2 + 50 tokens
+      each (Large dungeoneering token box page), at what the collection costs: its artefacts excavated and restored
+      at the hotspots (mechanics/archaeology.py, catalogue.collection_recipes)."""
     p = ctx.player
     lvl = p.level("Dungeoneering")
     floor_xp = SOLO_FLOOR_XP_PER_HOUR * min(1.0, lvl / 99)
     best = (1 / (TOKEN_SHARE * floor_xp),
             f"solo Dungeoneering floors (tokens are 20% of floor xp; ASSUMED rate: ~{floor_xp:,.0f} floor xp an hour)",
             {"Dungeoneering": 1 / TOKEN_SHARE}, 0.0)
-    arch = p.level("Archaeology")
-    if arch >= DRAGONKIN_V_LEVEL:
+    # Large Dungeoneering token boxes (the Dragonkin V/VI collections' repeat reward, catalogue.collection_recipes):
+    # opened for 5/4 x level^2 + 50 tokens each, at what the gatherer says a box costs (excavating and restoring
+    # the collection's artefacts).
+    box = ctx.gatherer.complete_source(TOKEN_BOX)
+    if box is not None:
         per_box = 1.25 * lvl ** 2 + 50
-        scale = ctx.cost.rate("Archaeology", arch) / max(1.0, ctx.cost.rate("Archaeology", 120))
-        per_hour = DRAGONKIN_V_PER_HOUR * min(1.0, scale) * 2 * per_box
-        if 1 / per_hour < best[0]:
-            best = (1 / per_hour, f"complete the Dragonkin V collection for 2 large Dungeoneering token boxes "
-                                  f"({2 * per_box:,.0f} tokens at {lvl} Dungeoneering; ASSUMED rate: "
-                                  f"~{DRAGONKIN_V_PER_HOUR * min(1.0, scale):.1f} collections an hour)", {}, 0.0)
+        hours = box.cost_per_unit / per_box
+        if hours < best[0]:
+            best = (hours, f"open {TOKEN_BOX}es ({per_box:,.0f} tokens each at {lvl} Dungeoneering): {box.how}",
+                    {s: v / per_box for s, v in box.xp_per_unit.items()}, 0.0)
     return best
 
 

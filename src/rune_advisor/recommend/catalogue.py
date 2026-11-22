@@ -144,8 +144,31 @@ def catalogue() -> list[dict]:
     from ..currencies import arc_recipes, shop_recipes
 
     out += shop_recipes() + arc_recipes()  # reward shops: N of a currency -> the item (currencies.py earns it)
+    out += collection_recipes()  # Archaeology collections: artefacts -> chronotes and repeat rewards
     out = [cast_enchant(r) for r in out]
     return out + decant_recipes(out) + augment_recipes(out)
+
+
+@cache
+def archaeology_collections() -> dict:
+    path = datapkg.path("archaeology_collections.json")
+    return json.loads(path.read_text()) if path.is_file() else {"collections": {}, "artefact_chronotes": {}}
+
+
+def collection_recipes() -> list[dict]:
+    """Handing an Archaeology collection's artefacts to its collector (data/archaeology_collections.json,
+    scripts/build_archaeology_collections.py): the chronotes it pays (the artefacts' own plus the set bonus) and each
+    repeat reward (Dragonkin V's two large Dungeoneering token boxes), as separate recipes on the same artefacts."""
+    out = []
+    for name, c in archaeology_collections()["collections"].items():
+        materials = [[a, 1.0] for a in c["artefacts"]]
+        for output, qty in [("chronotes", c["chronotes"]), *c["rewards"].items()]:
+            if qty > 0:
+                out.append({"skill": "Archaeology", "output": output, "output_qty": float(qty), "level": c["level"],
+                            "xp": 0.0, "ticks": 1.0, "materials": materials, "members": c["members"], "quests": [],
+                            "other_skills": [], "facility": f"{name} collection", "conversion": True,
+                            "collection": name})
+    return out
 
 
 AUGMENTED = "Augmented "

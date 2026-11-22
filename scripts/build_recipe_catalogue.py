@@ -28,7 +28,7 @@ from rune_advisor.xp import SKILL_ALIASES  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent / "src/rune_advisor/data/recipe_catalogue.json"
 SKILLS = {"Summoning", "Fletching", "Crafting", "Smithing", "Cooking", "Herblore", "Firemaking", "Construction", "Necromancy",
-          "Prayer", "Runecraft"}
+          "Prayer", "Runecraft", "Archaeology"}  # Archaeology: artefact restoration (damaged artefact + materials)
 ELEMENTAL_RUNES = {"Air rune", "Water rune", "Earth rune", "Fire rune"}
 # Conversions an item does once a day (Molten glass page: Desert amulets convert 50-150 soda ash daily).
 DAILY_TOOLS = ("Desert amulet",)
