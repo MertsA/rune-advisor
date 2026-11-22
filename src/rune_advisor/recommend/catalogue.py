@@ -288,7 +288,7 @@ def bank_mix(player: PlayerState, skill: str, start_xp: float, xp_needed: float,
         for name, n in mate.items():
             stock[name] = stock.get(name, 0) + n
     recipes = [effective(player, r) for r in catalogue()
-               if r["skill"] == skill and not r.get("conversion") and _usable(r, player)]
+               if r["skill"] == skill and not r.get("conversion") and not r.get("daemonheim") and _usable(r, player)]
     mix, xp, remaining = BankMix(recipient=player.name), start_xp, xp_needed
     gems = spirit_gem_charges(own) if skill == "Summoning" else 0
     prif = (q := player.quests.get("Plague's End")) is not None and q.done

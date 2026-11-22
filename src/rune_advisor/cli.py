@@ -405,6 +405,32 @@ def gaps(player: str, items: list[str] = typer.Argument(None, help="Items to pla
 
 
 @app.command()
+def estimates(player: str, items: list[str] = typer.Argument(None, help="Items to plan (default: every track's goals)"),
+              top: int = typer.Option(25, "-n"),
+              plugin: bool = True, beta: bool = BETA_OPT, plugin_only: bool = PLUGIN_ONLY_OPT,
+              snapshot: Path = SNAPSHOT_OPT, f2p: bool = F2P_OPT, group: list[str] = GROUP_OPT):
+    """Flagged estimates (a kill, catch or earning rate guessed where the data has none) that plans lean on, most
+    goals and hours first: the data worth confirming first, since these are what the planner would send you to do."""
+    ctx = _ctx(player, plugin, beta, plugin_only, snapshot, f2p, group)
+    if items:
+        for item in items:
+            ctx.gatherer.plan({item: 1})
+    else:
+        for t in ALL_TRACKS.values():
+            t.candidates(ctx)
+    g = ctx.gatherer
+    used = sorted(g.flag_use.items(), key=lambda kv: (-len(kv[1][1]), -kv[1][0]))
+    if not used:
+        console.print("no plan uses a flagged estimate")
+    for where, (hours, goals) in used[:top]:
+        some = ", ".join(sorted(goals)[:3]) + (f" (+{len(goals) - 3} more)" if len(goals) > 3 else "")
+        console.print(f"[bold]{where}[/bold]  ~{hours:,.1f}h planned  [dim]for {len(goals)}: {some}[/dim]",
+                      highlight=False)
+    idle = len(set(g.flagged) - set(g.flag_use))
+    console.print(f"[dim]{len(used)} flagged estimates used by plans; {idle} more costed but not chosen.[/dim]")
+
+
+@app.command()
 def rates(level: int = typer.Option(None, help="Show rates at this level instead of each skill's own level"),
           player: str = typer.Option(None, help="Use this player's levels"), f2p: bool = F2P_OPT):
     """XP/hour the cost model uses per skill, and where each rate comes from. With --player, the

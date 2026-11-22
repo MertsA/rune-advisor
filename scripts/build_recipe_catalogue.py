@@ -61,8 +61,9 @@ def _skill(name: str) -> str:
 
 def entries(d: dict) -> list[dict]:
     names = [m["name"] for m in d.get("materials", [])] + [o["name"] for o in d.get("outputs", [])]
-    if any("(Dungeoneering)" in n or "(Daemonheim)" in n for n in names):
-        return []
+    # Daemonheim recipes whose items carry the dungeon in their names are kept, tagged: they never feed recipes
+    # outside (the names don't match), and catalogue users that train skills leave them out.
+    daemonheim = any("(Dungeoneering)" in n or "(Daemonheim)" in n for n in names)
     skills = [(_skill(s.get("name")), _num(s.get("level"), 1), _num(s.get("experience"), 0)) for s in d.get("skills", [])]
     # Skills whose level the wiki marks boostable for this recipe (unmarked: not assumed boostable).
     boostable = sorted({_skill(s.get("name")) for s in d.get("skills", []) if s.get("boostable") is True})
@@ -74,7 +75,7 @@ def entries(d: dict) -> list[dict]:
         # Skill-less steps (robust glass machine, NPC services) as conversions for gathering chains. A tool
         # (an amulet that converts) must be owned; DAILY_TOOLS' conversions are capped per day.
         tools = [t.strip() for t in re.split(r",|<br\s*/?>", plain(d.get("tool") or "")) if t.strip()]
-        return [{"skill": "", "output": out["name"], "output_qty": _num(out.get("quantity"), 1) or 1, "level": 1,
+        return [{**({"daemonheim": True} if daemonheim else {}), "skill": "", "output": out["name"], "output_qty": _num(out.get("quantity"), 1) or 1, "level": 1,
                  "xp": 0.0, "ticks": _num(d.get("ticks")), "materials": materials,
                  "members": str(d.get("members", "Yes")).lower() != "no",
                  "quests": _LINK.findall(d.get("quest") or ""), "other_skills": [],
@@ -85,7 +86,7 @@ def entries(d: dict) -> list[dict]:
         # 0-xp steps (exalting essence chunks at the colossus) are kept as conversions: the gathering
         # planner can use them in a chain, but they're never training.
         if not xp and len(skills) == 1:
-            found.append({"skill": skill, "output": out["name"], "output_qty": _num(out.get("quantity"), 1) or 1,
+            found.append({**({"daemonheim": True} if daemonheim else {}), "skill": skill, "output": out["name"], "output_qty": _num(out.get("quantity"), 1) or 1,
                           "level": int(level), "xp": 0.0, "ticks": _num(d.get("ticks")), "materials": materials,
                           "members": str(d.get("members", "Yes")).lower() != "no",
                           "quests": _LINK.findall(d.get("quest") or ""), "other_skills": [],
@@ -93,7 +94,7 @@ def entries(d: dict) -> list[dict]:
             continue
         if skill not in SKILLS or not xp:
             continue
-        found.append({
+        found.append({**({"daemonheim": True} if daemonheim else {}),
             "skill": skill, "output": out["name"], "output_qty": _num(out.get("quantity"), 1) or 1,
             "level": int(level), "xp": xp, "ticks": _num(d.get("ticks")),
             "materials": materials,

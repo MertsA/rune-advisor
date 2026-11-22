@@ -15,7 +15,9 @@ currency itself is earned (`earning`) at a rate from its wiki page:
   * Chimes: selling Arc commodities at the Waiko market (`arc_recipes`, data/arc_commodities.json, base prices);
     the 20,000-a-day trade cap isn't modelled.
 
-Currencies that only buy cosmetics or come from Treasure Hunter or events are left out (`SKIPPED`). Shop stock
+Currencies that only buy cosmetics or come from Treasure Hunter or events are left out (`SKIPPED`). Rusty coins
+(Daemonheim's Smuggler) are earned on floors at a flagged estimate (RUSTY_COINS_PER_HOUR). A rate marked
+"ASSUMED" in its description is flagged for `radv estimates`. Shop stock
 limits on currency shops aren't modelled, and neither are balances except where the export has them (Slayer points).
 Everything else a shop takes stays an unsourced input (`radv gaps` names it).
 """
@@ -34,7 +36,7 @@ if TYPE_CHECKING:
 # Paid, Treasure Hunter, league and holiday-event currencies: their shops sell cosmetics an hour of play can't buy.
 SKIPPED = {"credits", "RuneCoins", "Double XP Tokens", "oddments", "Oddments", "H'oddments", "League points",
            "heartments", "fayre prize tickets", "Christmas spirit", "candy corn", "spooky tokens", "Fallen Leaves",
-           "frozen tokens", "warped tokens", "shattered anima", "Rusty coins"}  # Rusty coins: Daemonheim only
+           "frozen tokens", "warped tokens", "shattered anima"}
 WEEK_HOURS = 7 * 24
 THALER_PER_HOUR = 12.0  # 1 per 5 minutes (Thaler page)
 RUNESPAN_POINTS_AT_99 = 3_000.0  # "roughly 3,000 points ... per hour" at 99 Runecrafting (Runespan points page)
@@ -42,6 +44,9 @@ PEST_CONTROL_POINTS = 4  # a Veteran boat win
 PEST_CONTROL_MINUTES = 7.0  # a 2-3 minute game, the lander's 3-minute wait and the walk back: an assumption
 SLAYER_POINTS_PER_HOUR = 70.0  # as tracks/toolbelt.py
 PILFER_POINTS_PER_HOUR = 900.0  # as tracks/toolbelt.py
+# Rusty coins (Daemonheim's Smuggler): the floor's starting stack plus monster drops, ~4 floors an hour. A flagged
+# estimate: the drop tables give the coin drops only as "Varies".
+RUSTY_COINS_PER_HOUR = 15_000.0
 TASK_OVERHEAD_MINUTES = 3.0  # getting a reaper task from Death and reaching the boss: an assumption
 
 
@@ -122,6 +127,10 @@ def earning(ctx: Context, currency: str) -> tuple[float, str, dict[str, float], 
         rate = ctx.cost.rate("Dungeoneering", p.level("Dungeoneering"))
         return 1 / (0.2 * rate), "Dungeoneering floors (tokens are a tenth of floor xp, x2 with the ring of kinship)", \
             {"Dungeoneering": 5.0}, 0.0
+    if currency == "rusty coins":
+        return (1 / RUSTY_COINS_PER_HOUR, f"Dungeoneering floors (ASSUMED rate: ~{RUSTY_COINS_PER_HOUR:,.0f} rusty coins an "
+                                          "hour from the starting stack and monster drops)",
+                {"Dungeoneering": ctx.cost.rate("Dungeoneering", p.level("Dungeoneering")) / RUSTY_COINS_PER_HOUR}, 0.0)
     if currency == "pilfer points":
         return 1 / PILFER_POINTS_PER_HOUR, "Safecracking (Misthalin three-dial safes)", {}, 0.0
     if currency == "slayer points":

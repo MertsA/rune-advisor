@@ -67,7 +67,9 @@ def unfarmable() -> frozenset[str]:
 
 # Worded rarities (drop lines with no fraction, ~18,000 of them): the wiki's own sort value for each word
 # (Module:DropsLine), taken as a chance per kill. A guess; callers flag it.
-WORDED_CHANCE = {"common": 1 / 16, "uncommon": 1 / 64, "rare": 1 / 256, "very rare": 1 / 1024}
+WORDED_CHANCE = {"common": 1 / 16, "uncommon": 1 / 64, "rare": 1 / 256, "very rare": 1 / 1024,
+                 # No figure at all: flagged guesses (the user's rule, 2026-11-21: model it, flag it, fix it later).
+                 "varies": 1 / 64, "unknown": 1 / 128}
 
 
 def drop_chance(chance) -> tuple[float | None, bool]:
@@ -172,6 +174,90 @@ def boss_sim_kills_per_hour(player: PlayerState, monster: str,
     return kph, STYLES[how], kph * m["xp"]
 
 
+# Flagged estimates for drop sources with no kill or catch rate (the user's rule, 2026-11-21: an item and its whole
+# downstream chain shouldn't be unavailable because a rate isn't known; model it roughly, flag it, and replace it
+# once there's data. `radv estimates` ranks the flagged sources plans lean on, so the ones the planner would send the
+# player to get fixed first). Per hour: kills, catches, opens or loot rolls.
+ASSUMED_RATES = {
+    "boss": (10.0, "a boss with no guide or combat stats: 10 kills an hour"),
+    "big": (20.0, "a big monster no estimate covers: 20 kills an hour"),
+    "minigame": (30.0, "a minigame or activity monster: 30 an hour"),
+    "no xp": (60.0, "a creature with no combat xp: 60 an hour"),
+    "scenery": (60.0, "scenery (a plant, chest or node) with no rate: 60 an hour"),
+    "creature": (60.0, "a Hunter creature with no catch rate: 60 an hour"),
+    "daily": (1 / 24, "an NPC's hand-out or a repeatable activity: once a day"),
+    "wave": (1.0, "a minigame's last wave: one run an hour"),
+    "random": (1.0, "a random event while skilling: one an hour"),
+}
+DAILY_KINDS = {"npc", "other"}  # drop_source_kinds.json kinds costed as once a day (calendar time, a minute of play)
+ONE_OFF_KINDS = {"quest", "achievement"}  # rewards once: no repeatable source
+# Clue scroll caskets per hour by tier, solving clues the player gets (an estimate; clue sources aren't modelled).
+CASKETS_PER_HOUR = {"easy": 12.0, "medium": 8.0, "hard": 5.0, "elite": 3.0, "master": 2.0}
+# Sources no hour of play gets: Treasure Hunter, paid promotions and past holiday events.
+EXCLUDED_SOURCES = re.compile(r"Treasure Hunter|promotion|Christmas|Santa|Grotto|Halloween|Hween|Easter|Beach \(|"
+                              r"The Beach|\(20\d\d\)|Archive|Squeal of Fortune|Solomon|Mystery box|Present|"
+                              r"Holiday|Event|appearance token|Lottery|Golden Gnome|Summer of Adventure|Solstice|Genie's Wishes|Bundle|"
+                              r"Choosedays|Frank's Free Chest", re.I)
+
+
+def assumed_rate(player: PlayerState, source: str, style: tuple[str, float]) -> tuple[float, str, float, str] | None:
+    """(per hour, skill, xp/h, why) for a drop source with no kill or catch rate: a flagged estimate (ASSUMED_RATES),
+    or None where no play gets it (EXCLUDED_SOURCES, a Slayer level the player lacks, free-to-play)."""
+    if EXCLUDED_SOURCES.search(source):
+        return None
+    skill = style[0]
+    if source in WAVE_FINALES:  # the Fight Cave / Fight Kiln: a whole run per kill
+        n = ASSUMED_RATES["wave"][0]
+        return n, skill, 0.0, ASSUMED_RATES["wave"][1]
+    m = tables()["monsters"].get(source)
+    kind = source_kind(source)
+    if kind in ONE_OFF_KINDS or kind == "item":
+        return None  # a quest reward, or a container (the gatherer opens those)
+    if m is None and kind == "monster":  # a monster page with no stats in the tables (often a boss's page name)
+        n, why = ASSUMED_RATES["boss"]
+        return n, skill, 0.0, f"a monster with no stats: {n:g} kills an hour"
+    if m is None or kind in ("scenery", "creature", "random") or kind in DAILY_KINDS:
+        key = "daily" if kind in DAILY_KINDS else kind if kind in ("scenery", "creature", "random") else "scenery"
+        n, why = ASSUMED_RATES[key]
+        return n, skill, 0.0, why
+    if (m.get("members", True) and not player.members) or (m.get("slayer_level") or 0) > player.level("Slayer"):
+        return None
+    xp = m.get("xp") or 0
+    if source in bosses() and source in boss_rates():
+        guide = boss_kills_per_hour(player, source)
+        if guide is None or not guide.group or _guide_blocked(player, guide.row):
+            return None  # levels or quests the guide needs: an unlock, not a missing rate
+        n = ASSUMED_RATES["boss"][0]
+        return n, skill, n * xp, f"a team boss done solo: {n:g} kills an hour"
+    kind = ("boss" if source in bosses() else "minigame" if source in unfarmable()
+            else "no xp" if not xp else "big")
+    n, why = ASSUMED_RATES[kind]
+    return n, skill, n * xp, why
+
+
+@cache
+def source_kinds() -> dict[str, str]:
+    """What each drop source page is: monster, item, scenery, npc, creature, quest, achievement or other
+    (data/drop_source_kinds.json, scripts/build_drop_source_kinds.py)."""
+    path = datapkg.path("drop_source_kinds.json")
+    return json.loads(path.read_text())["kinds"] if path.is_file() else {}
+
+
+def source_kind(source: str) -> str:
+    if source in bosses():
+        return "monster"  # "The Twin Furies" page vs the boss: bosses get the boss rules whatever the page is
+    kind = source_kinds().get(source)
+    if kind:
+        return kind
+    return "monster" if source in tables()["monsters"] else "other"
+
+
+def _guide_blocked(player: PlayerState, row: dict) -> bool:
+    """A money making guide's levels or quests the player doesn't have yet."""
+    return any(player.level(SKILL_ALIASES.get(sk, sk)) < lvl for sk, lvl in (row.get("skills") or {}).items()) \
+        or any(not (q in player.quests and player.quests[q].done) for q in row.get("quests") or [])
+
+
 LOOT_TABLE = re.compile(r"^(.+) loot \((story|normal|hard)\)$")
 # Bosses that are a minigame's last wave (the Fight Cave, the Fight Kiln): reached after the waves before them, so
 # the combat sim's rate on the boss alone is no kill rate.
@@ -195,9 +281,7 @@ def estimated_kills_per_hour(player: PlayerState, monster: str,
     if monster in bosses():
         if (guide := boss_kills_per_hour(player, monster)) is None:
             return boss_sim_kills_per_hour(player, monster)
-        row = guide.row
-        if guide.group or any(player.level(SKILL_ALIASES.get(sk, sk)) < lvl for sk, lvl in (row.get("skills") or {}).items()) \
-                or any(not (q in player.quests and player.quests[q].done) for q in row.get("quests") or []):
+        if guide.group or _guide_blocked(player, guide.row):
             return None
         from .gear import STYLES
         return guide.kills_per_hour, STYLES[guide.style], guide.kills_per_hour * ((m or {}).get("xp") or 0)

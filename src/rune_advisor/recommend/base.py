@@ -550,7 +550,8 @@ class Context:
         cap = self.cost.rate(skill, level)
         rows = []
         for r in catalogue():
-            if r["skill"] != skill or r.get("conversion") or r["level"] > level or not _usable(r, self.player):
+            if r["skill"] != skill or r.get("conversion") or r.get("daemonheim") or r["level"] > level \
+                    or not _usable(r, self.player):  # Daemonheim recipes: inside a dungeon only, no training
                 continue
             r = effective(self.player, r)
             rate = capped(r["xp"] * 3600 / _recipe_seconds(r, self.player), r, cap)
@@ -657,7 +658,8 @@ class Context:
         g = self.gatherer
         best = None
         for r in catalogue():
-            if r["skill"] != skill or r.get("conversion") or r["level"] > level or not _usable(r, self.player):
+            if r["skill"] != skill or r.get("conversion") or r.get("daemonheim") or r["level"] > level \
+                    or not _usable(r, self.player):  # Daemonheim recipes: inside a dungeon only, no training
                 continue
             r = effective(self.player, r)
             srcs = [g.complete_source(m) for m, _ in r["materials"]]

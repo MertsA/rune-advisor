@@ -2263,16 +2263,16 @@ def test_boostable_gates_boost_others_train(monkeypatch):
         return {"skill": "Smithing", "output": output, "output_qty": 1.0, "level": 100, "xp": 10.0, "ticks": 2.0,
                 "materials": [["Pouch", 1]], "members": True, "quests": [], "other_skills": [], "facility": "",
                 **({"boostable": ["Smithing"]} if boostable else {})}
-    monkeypatch.setattr(gathering, "by_output", lambda: {"Plate": [recipe("Plate", True)],
-                                                         "Hatchet": [recipe("Hatchet", False)]})
+    monkeypatch.setattr(gathering, "by_output", lambda: {"Test plate": [recipe("Test plate", True)],
+                                                         "Test hatchet": [recipe("Test hatchet", False)]})
     p = PlayerState(name="X", ironman=True, skills={"Smithing": Skill("Smithing", 99, xp_for_level(99))},
                     inventories={"BANK": {"Pouch": 10}}, boosts={"banner": "Zaros"})
     g = Gatherer(Context(player=p, cost=CostModel.default(player=p, use_wiki=False)))
-    plate = g.plan({"Plate": 1})
+    plate = g.plan({"Test plate": 1})
     assert plate.steps[0].startswith("boost Smithing to 101 with the Zaros banner") and "instead of training" in plate.steps[0]
     assert plate.calendar_hours == 24 and plate.unlock_hours < 1
-    hatchet = g.plan({"Hatchet": 1})
-    assert hatchet.steps[0].startswith("first get 100 Smithing for Hatchet") and hatchet.unlock_hours > 1
+    hatchet = g.plan({"Test hatchet": 1})
+    assert hatchet.steps[0].startswith("first get 100 Smithing for Test hatchet") and hatchet.unlock_hours > 1
 
 
 def test_urn_input_xp_counts():

@@ -50,7 +50,8 @@ from typing import TYPE_CHECKING
 
 from ..cost import row_skills, typical_rate
 from ..boosts import GATHERING_SKILLS, item_multiplier
-from ..drops import drop_chance, estimated_kills_per_hour, kills_per_hour, sources_of, tables
+from ..drops import (ASSUMED_RATES, CASKETS_PER_HOUR, DAILY_KINDS, EXCLUDED_SOURCES, assumed_rate, drop_chance,
+                     estimated_kills_per_hour, kills_per_hour, source_kind, sources_of, tables)
 from .. import claims, currencies, respect
 from .. import disassembly as dis
 from .. import sim
@@ -62,7 +63,7 @@ from ..xp import xp_at
 from ..mechanics.farming import expected_yield
 from ..mechanics import is_stackable
 from ..mechanics.processing import effective
-from .catalogue import _recipe_seconds, _usable, by_output
+from .catalogue import _recipe_seconds, _usable, by_output, members_items
 
 if TYPE_CHECKING:
     from .base import Context
@@ -167,6 +168,7 @@ class Source:
     unlock: dict[str, int] = field(default_factory=dict)
     disassemble: str | None = None  # the item disassembled (disassemble)
     passive: bool = False  # comes in without play (Managing Miscellania): its calendar time isn't a cost
+    flag: str | None = None  # a flagged estimate stands in for missing data (drops.ASSUMED_RATES): why
 
     @property
     def complete(self) -> bool:
@@ -235,6 +237,14 @@ class Gatherer:
         self._cycle_hits: set[str] = set()  # open items the current lookup ran into (source())
         self._provisional: dict[str, tuple[Source | None, frozenset[str]]] = {}  # answers valid while those stay open
         self._training_rate: float | None = None
+        self._sim_memo: dict[str, Source | None] = {}
+        self._boost_memo: dict[str, Source | None] = {}
+        self._spots_added: set[str] = set()
+        # Spots costed at a flagged estimate (drops.assumed_rate) -> why, and what plans used them for: spot ->
+        # [hours, goals]. `radv estimates` ranks them so the ones plans lean on get real data first.
+        self.flagged: dict[str, str] = {}
+        self.flag_use: dict[str, list] = {}
+        self._goals: frozenset[str] = frozenset()
         self._plain_spot: dict[str, str | None] = {}  # boosted spot -> the same spot without the boost
         self._making: set[str] = set()  # consumables being planned: spots that use them up are out meanwhile
         # Items no source covers, over every plan this gatherer made: item -> (units, goals they were for).
@@ -305,22 +315,93 @@ class Gatherer:
             return float("inf")
         return 1.0 + sum(n * self.consumable_hours(i) for i, n in uses.items())
 
+    def _daily_options(self, item: str) -> list[Source]:
+        """NPC hand-outs and repeatable activities (port voyages, Arc contracts) with no rate: a flagged once a day,
+        a minute of play each (drops.ASSUMED_RATES["daily"])."""
+        out = []
+        for src, chance, qty in sources_of(item):
+            c, guessed = drop_chance(chance)
+            if not c or source_kind(src) not in DAILY_KINDS or EXCLUDED_SOURCES.search(src):
+                continue
+            per = c * (qty or 1)
+            why = ASSUMED_RATES["daily"][1]
+            out.append(Source("daily", f"from {src} (ASSUMED rate: {why})", CLAIM_VISIT_HOURS / per,
+                              calendar_per_unit=24 / per, flag=why))
+        return out
+
+    def _note_flag(self, where: str, why: str, hours: float) -> None:
+        """A plan leaned on a flagged estimate for `hours`: tallied for `radv estimates`."""
+        self.flagged[where] = why
+        use = self.flag_use.setdefault(where, [0.0, set()])
+        use[0] += hours
+        use[1] |= self._goals
+
+    def _is_item(self, name: str) -> bool:
+        """A drop source that is itself an item (a pack, a gift, a casket): it's opened, not killed."""
+        if name in tables()["monsters"]:
+            return False
+        if (kind := source_kind(name)) != "other":
+            return kind == "item"
+        return name in members_items() or name in by_output() or name in tables_shops() or bool(sources_of(name))
+
+    def _container_options(self, item: str) -> list[Source]:
+        """Opening a pack, gift or casket that holds `item` (its drop table): the container's own cost over the
+        expected amount inside."""
+        out = []
+        for src, chance, qty in sources_of(item):
+            c, guessed = drop_chance(chance)
+            if not c or EXCLUDED_SOURCES.search(src) or not self._is_item(src) or src == item:
+                continue
+            sub = self.source(src)
+            if sub is None:
+                continue
+            per = c * (qty or 1)
+            r = {"skill": "", "output": item, "output_qty": per, "level": 1, "xp": 0.0, "ticks": 1.0,
+                 "materials": [[src, 1.0]], "members": True, "quests": [], "other_skills": [], "facility": "",
+                 "conversion": True}
+            flag = sub.flag or ("chance assumed" if guessed else None)
+            out.append(Source("craft", f"open {src}" + (" (chance assumed)" if guessed else ""),
+                              sub.cost_per_unit / per, xp_per_unit={s: v / per for s, v in sub.xp_per_unit.items()},
+                              recipe=r, unsourced=sub.unsourced, unlock=sub.unlock, flag=flag))
+        return out
+
     def _add_estimated_spots(self, item: str) -> None:
+        if item in self._spots_added:
+            return
+        self._spots_added.add(item)
+        self._add_estimated_spots_uncached(item)
+
+    def _add_estimated_spots_uncached(self, item: str) -> None:
         """Monsters that drop `item` but no training guide covers: kill rates estimated from the
         player's best combat style and gear (drops.estimated_kills_per_hour). All of such a
         monster's drops are indexed, so one visit can collect several needed items."""
         index = self._drops()
         for src, chance, _ in sources_of(item):
-            spot = f"{src} (estimated kill rate)"
-            if drop_chance(chance)[0] is None or spot in self._estimated:
+            if drop_chance(chance)[0] is None or src in self._estimated:
                 continue
-            self._estimated.add(spot)
+            self._estimated.add(src)
+            spot = f"{src} (estimated kill rate)"
             est = estimated_kills_per_hour(self.ctx.player, src, self.ctx.combat_style)
             if est is None:
-                continue
+                # No kill or catch rate: a flagged estimate rather than no source (drops.ASSUMED_RATES).
+                if self._is_item(src):
+                    continue  # a pack, gift or casket: opened (_container_options), not farmed
+                if (assumed := assumed_rate(self.ctx.player, src, self.ctx.combat_style)) is None:
+                    continue
+                kph, skill, xph, why = assumed
+                if source_kind(src) in DAILY_KINDS:
+                    continue  # once a day: a calendar-limited source (_daily_options), not a spot to stand at
+                spot = f"{src} (ASSUMED rate: {why})"
+                self.flagged[spot] = why
+                est = (kph, skill, xph)
             kph, skill, xph = est
+            # A plant's or patch's crop (harmony moss off a pillar, limpwurt off its plant) is grown: the farm model
+            # covers it, not a guessed rate at the scenery.
+            skip = crops() if spot.endswith(")") and "ASSUMED" in spot and source_kind(src) == "scenery" else ()
             best: dict[str, float] = {}
             for name, chance, qty, _ in tables()["sources"].get(src, []):
+                if name in skip:
+                    continue
                 c, guessed = drop_chance(chance)
                 if c and kph * c * qty > best.get(name, 0):
                     best[name] = kph * c * qty
@@ -428,7 +509,8 @@ class Gatherer:
             options.append(farm)
         if (earned := currencies.earning(self.ctx, item)) is not None:  # reward-shop currencies
             hours, how, xp, calendar = earned
-            options.append(Source("earn", how, hours, xp_per_unit=xp, calendar_per_unit=calendar))
+            flag = "assumed earning rate" if "assum" in how.lower() else None
+            options.append(Source("earn", how, hours, xp_per_unit=xp, calendar_per_unit=calendar, flag=flag))
         for r in by_output().get(item, []):
             if not _usable(r, p, levels=False) or r.get("daily"):
                 continue  # daily-capped conversions (Desert amulets) aren't an hourly source
@@ -453,6 +535,15 @@ class Gatherer:
                    else f"make with {r['skill']}")
             options.append(Source("craft", how, hours / out, xp_per_unit={s: v / out for s, v in xp.items()},
                                   recipe=r, unsourced=frozenset(unsourced), unlock=unlock))
+        options += self._daily_options(item)
+        if not any(o.complete for o in options):
+            # Packs, gifts and caskets holding the item: a fallback for coverage (following every container from
+            # every item widens the search for little gain where a complete source exists).
+            options += self._container_options(item)
+        if (casket := re.match(r"Reward casket \((\w+)\)$", item)) and casket.group(1) in CASKETS_PER_HOUR:
+            n = CASKETS_PER_HOUR[casket.group(1)]
+            why = f"{n:g} {casket.group(1)} clues solved an hour"
+            options.append(Source("earn", f"solve {casket.group(1)} clue scrolls (ASSUMED rate: {why})", 1 / n, flag=why))
         options += self._disassembly_sources(item)[:1]
         best = min(options, key=lambda o: (not o.complete, self.net_cost(o)), default=None)
         if best is not None and best.passive:
@@ -498,6 +589,18 @@ class Gatherer:
         return src if src is not None and src.complete else None
 
     def _simulated(self, item: str) -> Source | None:
+        # The player's own rates, the same whatever else is being worked out: memoised (recipe cycles walk an item
+        # again while an answer further up is still open).
+        if item not in self._sim_memo:
+            self._sim_memo[item] = self._simulated_uncached(item)
+        return self._sim_memo[item]
+
+    def _boosted_gather(self, item: str) -> Source | None:
+        if item not in self._boost_memo:
+            self._boost_memo[item] = self._boosted_gather_uncached(item)
+        return self._boost_memo[item]
+
+    def _simulated_uncached(self, item: str) -> Source | None:
         found = sim.gather_rate(self.ctx.player, item)
         if found is None or found[1].items_per_hour <= 0:
             return None
@@ -518,7 +621,7 @@ class Gatherer:
         return Source("gather", how, 1 / (r.items_per_hour * boon), xp_per_unit={skill: r.xp_per_item / boon}, rep=rep,
                       calendar_per_unit=calendar)
 
-    def _boosted_gather(self, item: str) -> Source | None:
+    def _boosted_gather_uncached(self, item: str) -> Source | None:
         """A tree or rock the player is a few levels short of but can boost to (level_boosts.reach): the
         simulated rate at the lowest level that gets the item, with that level as an unlock (trained or boosted
         when planning)."""
@@ -630,7 +733,11 @@ class Gatherer:
         """Hours (and coins) to get every item in `short`; `stock` covers recipe inputs first. Levels a recipe
         on the way needs are trained first, once each (except `training`: the plan's own skill)."""
         stock = dict(stock if stock is not None else self.ctx.player.holdings)
-        g = self._plan(short, stock, {})
+        outer_goals, self._goals = self._goals, self._goals or frozenset(short)
+        try:
+            g = self._plan(short, stock, {})
+        finally:
+            self._goals = outer_goals
         if (any(st.lstrip().startswith("disassemble ") for st in g.steps)
                 and "MATERIALS_STORAGE" not in self.ctx.player.inventories):
             # Exports since 2026-10-31 carry the storage as INVENT_MATERIAL_* vars (inventory MATERIALS_STORAGE).
@@ -777,6 +884,8 @@ class Gatherer:
                     continue
             if src.kind == "daily":
                 days = n * src.calendar_per_unit / 24
+                if src.flag:
+                    self._note_flag(src.how, src.flag, n * src.hours_per_unit)
                 g.hours += n * src.hours_per_unit
                 g.coins += n * src.coins_per_unit
                 g.calendar_hours += n * src.calendar_per_unit
@@ -832,6 +941,8 @@ class Gatherer:
             g.add_xp(src.xp_per_unit, n)
             for faction, per in src.rep.items():
                 g.reputation[faction] = g.reputation.get(faction, 0) + per * n
+            if src.flag:
+                self._note_flag(src.how, src.flag, hours)
             cost = f", {n * src.coins_per_unit:,.0f} gp" if src.coins_per_unit else ""
             if (days := n * src.calendar_per_unit / 24) >= 1:  # weekly shop stock, daily nodes
                 cost += f", ~{days / 7:,.1f} weeks of stock" if src.kind == "shop" else f", ~{days:,.0f} days"
@@ -1020,6 +1131,8 @@ class Gatherer:
             g.add_xp(xp, hours)
             side = ", ".join(f"+{v * hours:,.0f} {s} xp" for s, v in xp.items())
             g.steps.append(f"spend ~{hours:.1f}h at {m}: {', '.join(got)} ({side})")
+            if m in self.flagged:
+                self._note_flag(m, self.flagged[m], hours)
             if uses := {i: math.ceil(n * hours) for i, n in self._consumes.get(m, {}).items()}:
                 g.steps.append("  using " + ", ".join(f"{n:,} {i}" for i, n in uses.items()))
                 need = {}
@@ -1056,6 +1169,12 @@ def gathered() -> list[dict]:
 def seeds() -> list[dict]:
     path = datapkg.path("recipe_catalogue.json")
     return json.loads(path.read_text()).get("seeds", []) if path.is_file() else []
+
+
+@cache
+def crops() -> frozenset[str]:
+    """Everything a seed grows (recipe catalogue seeds)."""
+    return frozenset(c for seed in seeds() for c in seed["crops"])
 
 
 @cache
