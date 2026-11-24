@@ -4,7 +4,9 @@ The planner running in a browser tab, served as static files. Nothing is compute
 CPython compiled to WebAssembly (Pyodide), the planner package and its data, and plans in a web worker. Player
 data comes from the export API, the same way the desktop planner reads it.
 
-This is a proof of concept, built 2026-11-17 and run only on this machine. It is not on runeadvisor.com.
+Built 2026-11-17 as a proof of concept and run only on this machine; not on runeadvisor.com yet. Since
+2026-11-24 it has what serving it needs on our side: tokens derived from the account key, settings stored
+encrypted with the token, and the big files split off for a CDN with hash checks.
 
 ## Try it
 
@@ -23,9 +25,10 @@ supplies the list of quests that exist today (the same for everyone; only the ti
 | Piece | Where | What it does |
 | --- | --- | --- |
 | Page | `packaging/web/index.html`, `planner.js` | The desktop app's `app.js` unchanged, plus a page script that answers its `/api/...` calls (`window.raTransport`): job table, result cache, cancel, settings |
-| Worker | `packaging/web/worker.js` | Loads Pyodide and the wheels from the same site, unpacks the wiki cache, writes the two settings files, runs one planner call at a time |
-| Planner entry | `src/rune_advisor/app/web.py` | `run(view, body, refresh, progress)` around the desktop app's `Planner`, with a context factory that reads only the export API |
-| Build | `scripts/build_web.py` | Pinned Pyodide (npm tarball, SHA-256 checked), pinned wheels, this checkout's wheel, the wiki tables |
+| Worker | `packaging/web/worker.js` | Loads Pyodide, fetches the wheels and the wiki cache with their SRI hashes, writes the two settings files, runs one planner call at a time |
+| Planner entry | `src/rune_advisor/app/web.py` | `run(view, body, refresh, progress)` around the desktop app's `Planner`, with a context factory (`rune_advisor.planning`) that reads only the export API |
+| Token keys | `site/assets/tokenkeys.js` | Deriving tokens from the account key; sealing and opening the settings blob (AES-GCM). `src/rune_advisor/token_keys.py` is the Python twin the tests compare it with |
+| Build | `scripts/build_web.py` | Pinned Pyodide (npm tarball, SHA-256 checked), pinned wheels, this checkout's wheel, the wiki tables; the big files go to `planner-assets/` under hashed names |
 | Local hosting | `scripts/serve_web.py` | Static files with the Content-Security-Policy below, and a local API |
 
 A planner call blocks the worker, so the page keeps the jobs and cancels a running one by ending the worker
@@ -34,14 +37,27 @@ and starting another (about two seconds, and the loaded player is read again).
 ## Signing in
 
 The planner page never sees the account key. Without a token it sends the user to `/account/#planner`. The
-account page opens the account with the key as it always did, then makes a read token labelled "Web planner",
-revokes the ones it made that way before, puts the token in `sessionStorage` and returns to `/planner/`. The
-token lasts as long as the tab, so each visit needs the key again. If the API refuses the token the planner
-goes back to the account page.
+account page opens the account with the key, derives the account's **web planner token** from it (making it the
+first time: `kind: "web"`, read only, one per account; `docs/export-api.md` "Derived tokens"), puts it in
+`sessionStorage` and returns to `/planner/`. The token lasts as long as the tab, so each visit needs the key again.
+Every tab and browser derives the same token: nothing is revoked on sign-in. If the API refuses the token the
+planner goes back to the account page.
 
-Consequences as built: one planner tab per account at a time (a second sign-in revokes the first tab's
-token), and the account page shows the planner button only where the page names a planner
-(`<meta name="planner">`, added by the build), so the live site is unchanged until that is wanted.
+The planner token is the bearer value, a dot, and the key to the token's settings blob. Only the part before the
+dot is ever sent. If we rotate the token after a leak (`export_api token rotate`), the next sign-in derives its
+new value and the account page re-encrypts the settings for it.
+
+The account page shows the planner button only where the page names a planner (`<meta name="planner">`, added
+by the build), so the live site is unchanged until that is wanted.
+
+## Settings
+
+`rune_advisor.toml` and `overrides.toml`, the desktop planner's two files, are two text boxes. Saved, they are
+sealed in the page with AES-256-GCM under the token's settings key and stored with the token (`/v1/blob`, at most
+64 KiB, versioned so two tabs cannot silently undo each other). The server holds bytes it cannot read; every
+browser signed in to the account sees the same settings. The planner takes its API address and token from the
+page, never from these files. Settings an older build kept in `localStorage` are offered once and moved into the
+blob at the next save.
 
 ## What differs from the desktop planner
 
@@ -53,15 +69,23 @@ token), and the account page shows the planner button only where the page names 
   old as the build. They belong in the data package.
 - **The quest list** comes from one player's Adventurer's Log at build time. It also belongs in the data
   package.
-- **Settings** are the desktop planner's two files, `rune_advisor.toml` and `overrides.toml`, as text boxes
-  kept in the browser's `localStorage`. Nothing syncs them.
+- **Settings** are the desktop planner's two files as text boxes, synced through the token's blob (above). The
+  desktop planner does not read the blob yet.
 - **No data package updates**, no archives, no plugin database, no `radv` commands.
 
-## Content-Security-Policy
+## Hosting and Content-Security-Policy
 
-The site's policy is `default-src 'self'` with the API in `connect-src`. The planner needs one addition:
-`script-src 'self' 'wasm-unsafe-eval'`, which allows compiling WebAssembly and nothing else (`eval` stays
-blocked; the page was tested with it blocked). The worker and everything it fetches are same-origin.
+The pages, the worker and Pyodide's small loader (`pyodide.js`: a worker may only import scripts from its own
+site) are served by our servers with the rest of the site. The big files (Pyodide's runtime, the wheels, the
+wiki tables: about 17 MB) go to `planner-assets/` under names that never change meaning, `pyodide/<version>/`
+and `files/<sha256>/<name>`, for a CDN (`--assets-url`, planned: Cloudflare in front of `dl.runeadvisor.com`).
+The manifest, from our servers, gives each wheel and the tables an SRI hash, and the worker fetches them with
+it: the browser refuses a file that differs from the one built (tried with a tampered file). Pyodide's own
+runtime files are loaded by its loader and are not checked.
+
+The site's policy is `default-src 'self'` with the API in `connect-src`. The planner adds `'wasm-unsafe-eval'`
+to `script-src`, which allows compiling WebAssembly and nothing else (`eval` stays blocked), and the assets'
+host to `script-src` and `connect-src` when they come from a CDN (`scripts/serve_web.py` `csp()`).
 
 ## Measurements
 
@@ -85,15 +109,19 @@ A profile of the guide (`cProfile`, desktop) says the time is spent re-deriving 
 (holdings merged across inventories, owned equipment, discovered blueprints), not on tables that could be
 precomputed into the data package. More caching of that kind is the next speed-up; compiled helpers come after.
 
-First visit downloads 18 MB: Pyodide 13.5 MB, wheels 3.8 MB (the planner and its data are 3.0 MB of that),
-wiki tables 0.6 MB. Served compressed the WebAssembly file shrinks further; nothing here measures that.
+First visit downloads about 17.5 MB: Pyodide 13.5 MB, wheels 3.3 MB (since 2026-11-24 without typer, rich and
+click), wiki tables 0.6 MB. Served compressed the WebAssembly file shrinks further; nothing here measures that.
+
+2026-11-24 on the desktop: the guide for the same character takes 124 s end to end (`radv guide`, start-up
+included). Features added since the measurements above had pushed it to over 13 minutes before c38b948 brought
+it back; the browser was not measured again.
 
 ## Not done
 
-- Not deployed, not behind a CDN, no cache headers or versioned file names.
+- Not deployed. The servers' side is still to set up: the CDN with its cache rules and CORS, a name to upload
+  to, and the planner's CSP.
 - Only Chromium was driven (headless). Firefox and Safari are untested.
-- No sync of settings between browsers; no settings form (two text boxes).
-- The page does not say how old the wiki tables are.
-- `rune_advisor.cli` is imported for its context builder, which pulls typer, rich and click into the
-  download. Moving the builder out of `cli.py` would drop them.
-- The privacy policy does not mention the planner page or its token.
+- The wiki tables and the quest list are fixed at build time; they belong in the data package. The page now says
+  the day they were fetched.
+- No settings form (two text boxes); the desktop planner does not sync settings yet.
+- The privacy policy does not mention the planner page, its token, the settings blobs or the CDN.
