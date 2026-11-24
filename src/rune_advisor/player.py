@@ -474,8 +474,9 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
     # The game keeps retired pre-rework quest configs under the same names (e.g. two "Rune
     # Mysteries"), so merge by name: done if any copy is done.
     by_name: dict[str, list[dict]] = {}
-    # Quest names are in the expanded form only (an export API snapshot holds state by config id).
-    for q in expanded(snap)[0].get("quests") or []:
+    # `snap` is the expanded form here (names joined from `configs`): expanding it again would join with the
+    # packaged or cached configs and ignore the ones the caller passed.
+    for q in snap.get("quests") or []:
         by_name.setdefault(q["name"], []).append(q)
     # Quests never un-complete (replays show as unfinished in the Adventurer's Log too), so a quest another
     # source has as completed but the snapshot doesn't was finished after the snapshot was taken.

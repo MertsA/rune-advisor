@@ -501,10 +501,13 @@ def test_f2p_rate_rows_carry_recipes():
     assert sum(1 for r in all_rows if r.get("recipe")) >= 94
 
 
-def test_exporter_end_to_end_plan(tmp_path):
+def test_exporter_end_to_end_plan(tmp_path, monkeypatch):
     """The planner reads the snapshot the API derives from the wire posts: skills, quest and achievement state,
     inventories (named from item ids), var-backed containers, currencies and bonus xp."""
+    from rune_advisor import api_client
     from rune_advisor.export_api import ApiError, ItemNames, Service, Store
+
+    monkeypatch.setattr(api_client, "CONFIGS_DIR", tmp_path / "api_configs")  # not the checkout's cached sets
 
     configs, _, posts = _mock_configs_and_posts(tmp_path)
     names = ItemNames({1511: {"name": "Logs", "config": "LOGS"}, 23716: {"name": "Huge XP lamp", "config": "HUGE_LAMP"},
