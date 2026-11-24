@@ -3119,8 +3119,11 @@ def test_export_api_accounts_copy_leaves_plugin_data_out(tmp_path):
     account, key = store.create_account()
     _, plugin = store.create_token(account, "plugin", ["submit"], None)
     _, planner = store.create_token(account, "planner", ["read"], None)
-    _, mate = store.create_token(account, "mate", ["read"], ["Zezima"])
+    mate_id, mate = store.create_token(account, "mate", ["read"], ["Zezima"])
     store.save_state(account, "Zezima", {"player": "Zezima", "updated": 1.0, "seq": 1, "posts": 1})
+    planner_info, mate_info = store.lookup(planner)[0], store.lookup(mate)[0]
+    store.put_blob(planner_info, b"sealed settings, kept" + bytes(16), 0)
+    store.put_blob(mate_info, b"sealed settings, dropped" + bytes(16), 0)
     out = tmp_path / "long" / "export_api.sqlite3"
     assert export_api.main(["--data-dir", str(tmp_path / "live"), "accounts-copy", str(out)]) == 0
     assert store.players(account) and store.lookup(mate)[1] == "ok"  # the live store is untouched
@@ -3132,6 +3135,8 @@ def test_export_api_accounts_copy_leaves_plugin_data_out(tmp_path):
     assert restored.account_by_key(key) == account and restored.players(account) == []
     assert restored.lookup(plugin)[1] == "ok" and restored.lookup(planner)[1] == "ok"
     assert restored.lookup(mate) == (None, "revoked")  # never unlimited
+    # The user's settings stay (they are not plugin data), except those of a token the copy made bare.
+    assert restored.blob(planner_info.id)["data"].startswith(b"sealed settings, kept") and restored.blob(mate_id) is None
     restored.close()
     assert export_api.main(["--data-dir", str(tmp_path / "nothing"), "accounts-copy", str(tmp_path / "x.sqlite3")]) == 2
 
@@ -3336,6 +3341,105 @@ def test_export_api_delete_what_a_token_posted_over_http(tmp_path):
         status, gone = h.call("DELETE", "/v1/tokens/posted", auth=key, headers={"X-Token-Id": again["id"]})
         assert status == 200 and gone["deleted"] == ["PlayerOne"] and h.store.players(account) == []
         assert h.store.lookup(again["token"]) == (None, "revoked") and h.store.lookup(other_token)[1] == "ok"
+    finally:
+        h.close()
+
+
+def test_token_keys_hkdf_and_split():
+    """The derivation the account page uses: RFC 5869 HKDF-SHA256, and a planner token split at the dot."""
+    from rune_advisor import token_keys
+
+    # RFC 5869 test case 3: no salt, no info.
+    assert token_keys.hkdf_sha256(bytes([0x0B] * 22), b"", 42).hex() == (
+        "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8")
+    key, tid = "raa_" + "k" * 43, "0" * 32
+    held = token_keys.planner_token(key, tid, 0)
+    sent, enc = token_keys.split(held)
+    assert sent == token_keys.bearer(key, tid, 0) and len(sent) == 47 and enc == token_keys.settings_key(key, tid, 0)
+    assert token_keys.bearer(key, tid, 1) != sent and token_keys.split(sent) == (sent, None)
+
+
+def test_export_api_derived_tokens_rotation_and_blobs(tmp_path):
+    """Tokens the account page derives from the key, settings blobs per token, rotation by the operator and by the page."""
+    import base64
+
+    from rune_advisor import token_keys
+
+    h = _ApiHarness(tmp_path)
+    try:
+        key = h.call("POST", "/v1/accounts", {})[1]["key"]
+        account = h.call("GET", "/v1/account", auth=key)[1]["id"]
+        tid = "a" * 32
+        bearer = token_keys.bearer(key, tid, 0)
+        made = {"id": tid, "token": bearer, "label": "Web planner", "scopes": ["read"], "kind": "web"}
+        status, reply = h.call("POST", "/v1/tokens", made, auth=key)
+        assert status == 201 and reply["derived"] and reply["epoch"] == 0 and "token" not in reply
+        # One web token per account; an id or a value is never taken twice; malformed values are refused.
+        assert h.call("POST", "/v1/tokens", {**made, "id": "b" * 32, "token": token_keys.bearer(key, "b" * 32, 0)}, auth=key)[0] == 409
+        assert h.call("POST", "/v1/tokens", {**made, "kind": ""}, auth=key)[0] == 409
+        assert h.call("POST", "/v1/tokens", {**made, "token": "rat_short", "kind": ""}, auth=key)[0] == 400
+        assert h.call("POST", "/v1/tokens", {**made, "id": "XYZ", "kind": ""}, auth=key)[0] == 400
+        assert h.call("POST", "/v1/tokens", {**made, "kind": "web", "scopes": ["read", "submit"]}, auth=key)[0] == 400
+        assert h.call("POST", "/v1/tokens", {"label": "x", "scopes": ["read"], "kind": "web"}, auth=key)[0] == 400
+        # The key itself, and the settings half of the planner token, appear nowhere in the store.
+        held = token_keys.planner_token(key, tid, 0)
+        assert h.call("GET", "/v1/players", auth=held)[0] == 400  # the part after the dot is refused, not used
+        assert h.call("GET", "/v1/players", auth=bearer)[0] == 200
+        dump = "\n".join(h.store.db.iterdump())
+        assert bearer not in dump and held.split(".")[1] not in dump
+
+        # Blobs: versioned, size-limited, read tokens only.
+        assert h.call("GET", "/v1/blob", auth=bearer)[0] == 404
+        data = base64.b64encode(b"n" * 12 + b"ciphertext and a tag....").decode()
+        assert h.call("POST", "/v1/blob", {"version": 0, "data": data}, auth=bearer) == (200, {"version": 1})
+        status, stale = h.call("POST", "/v1/blob", {"version": 0, "data": data}, auth=bearer)
+        assert status == 412 and stale["version"] == 1
+        assert h.call("POST", "/v1/blob", {"version": 1, "data": "!!"}, auth=bearer)[0] == 400
+        assert h.call("POST", "/v1/blob", {"version": 1, "data": base64.b64encode(b"x" * 70000).decode()}, auth=bearer)[0] == 413
+        assert h.call("GET", "/v1/blob", auth=bearer)[1] == {"version": 1, "data": data}
+        plugin = h.call("POST", "/v1/tokens", {"label": "plugin", "scopes": ["submit"]}, auth=key)[1]
+        assert h.call("GET", "/v1/blob", auth=plugin["token"])[0] == 403
+        listed = {t["id"]: t for t in h.call("GET", "/v1/tokens", auth=key)[1]["tokens"]}
+        assert listed[tid]["blob"]["version"] == 1 and listed[tid]["kind"] == "web" and listed[plugin["id"]]["blob"] is None
+
+        # The operator rotates after a leak: the old value is told "revoked", the blob waits for the account page.
+        assert h.store.rotate(tid) == "pending" and h.store.rotate(tid) == "already pending"
+        status, reply = h.call("GET", "/v1/blob", auth=bearer)
+        assert status == 401 and reply["token"] == "revoked"
+        listed = {t["id"]: t for t in h.call("GET", "/v1/tokens", auth=key)[1]["tokens"]}
+        assert listed[tid]["pending"] and listed[tid]["epoch"] == 1 and listed[tid]["blob"]["epoch"] == 0
+        # The page reads the old blob with the key, registers the new value, and re-encrypts.
+        status, old = h.call("GET", "/v1/tokens/blob", auth=key, headers={"X-Token-Id": tid})
+        assert status == 200 and old == {"version": 1, "epoch": 0, "data": data}
+        assert h.call("GET", "/v1/tokens/blob", auth=bearer, headers={"X-Token-Id": tid})[0] == 401
+        new = token_keys.bearer(key, tid, 1)
+        assert h.call("POST", "/v1/tokens/rotate", {"epoch": 2, "token": new}, auth=key, headers={"X-Token-Id": tid})[0] == 409
+        assert h.call("POST", "/v1/tokens/rotate", {"epoch": 1, "token": bearer}, auth=key, headers={"X-Token-Id": tid})[0] == 409
+        assert h.call("POST", "/v1/tokens/rotate", {"epoch": 1, "token": new}, auth=key, headers={"X-Token-Id": tid})[0] == 200
+        status, reply = h.call("GET", "/v1/blob", auth=new)
+        assert status == 409 and reply["reason"] == "migrate" and reply["epoch"] == 0
+        assert h.call("POST", "/v1/blob", {"version": 1, "data": data}, auth=new) == (200, {"version": 2})
+        assert h.call("GET", "/v1/blob", auth=new)[0] == 200
+
+        # The page's own "replace": the next epoch at once, the old value retired; the blob follows the token.
+        newer = token_keys.bearer(key, tid, 2)
+        assert h.call("POST", "/v1/tokens/rotate", {"epoch": 2, "token": newer}, auth=key, headers={"X-Token-Id": tid})[0] == 200
+        assert h.call("GET", "/v1/players", auth=new)[1]["token"] == "revoked"
+        assert h.call("GET", "/v1/blob", auth=newer)[0] == 409  # still at epoch 1 until re-encrypted
+        # A random token cannot be derived again: rotating it revokes it.
+        assert h.store.rotate(plugin["id"]) == "revoked" and h.store.lookup(plugin["token"]) == (None, "revoked")
+        assert h.call("POST", "/v1/tokens/rotate", {"epoch": 1, "token": token_keys.bearer(key, "c" * 32, 1)},
+                      auth=key, headers={"X-Token-Id": plugin["id"]})[0] == 404
+
+        # Any token revokes itself without the key; its blob goes with it.
+        assert h.call("DELETE", "/v1/token", auth=newer) == (200, {"revoked": True})
+        assert h.call("GET", "/v1/players", auth=newer)[1]["token"] == "revoked"
+        assert h.store._q("SELECT COUNT(*) AS n FROM blobs")[0]["n"] == 0
+        # Revoked rows say nothing about whose they were, derived or not.
+        cols = "account, prefix, label, scopes, epoch, derived, kind, pending"
+        assert {tuple(r) for r in h.store.db.execute(f"SELECT {cols} FROM tokens WHERE revoked IS NOT NULL")} == {
+            ("", "", "", "", 0, 0, "", None)}
+        assert account
     finally:
         h.close()
 

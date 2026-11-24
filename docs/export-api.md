@@ -60,9 +60,13 @@ routes, small JSON bodies, one process behind nginx.
 | `POST /v1/accounts` | none | body `{captcha}`; `201 {account, key}`, the key shown once |
 | `GET /v1/account` | account key | id, created and last-active days, character and token counts, quotas |
 | `DELETE /v1/account` | account key | delete the account, its tokens and every character's state |
-| `GET /v1/tokens` | account key | live tokens: `id`, `prefix`, `label`, `scopes`, `characters`, `created`, `last_used` (days) |
-| `POST /v1/tokens` | account key | body `{label, scopes: ["submit"\|"read"], characters: [names]}`; `201` with the token, shown once |
+| `GET /v1/tokens` | account key | live tokens: `id`, `prefix`, `label`, `scopes`, `characters`, `created`, `last_used` (days), `epoch`, `derived`, `kind`, `pending` (the day a rotation retired its value), `blob` (`{version, epoch, bytes}` or null) |
+| `POST /v1/tokens` | account key | body `{label, scopes: ["submit"\|"read"], characters: [names]}`; `201` with the token, shown once. With `{id, token, kind}` added: register a derived token (below), nothing returned but its metadata |
 | `DELETE /v1/tokens` + `X-Token-Id` | account key | revoke a token |
+| `POST /v1/tokens/rotate` + `X-Token-Id` | account key | body `{epoch, token}`: a derived token's value at a new epoch (below) |
+| `GET /v1/tokens/blob` + `X-Token-Id` | account key | a token's settings blob with its epoch, for re-encrypting after a rotation |
+| `GET`/`POST`/`DELETE /v1/blob` | `read` token | the token's own settings blob (below) |
+| `DELETE /v1/token` | any token | the token revokes itself |
 | `DELETE /v1/players` + `X-Player` | account key | delete one character's state |
 | `GET`/`POST /v1/consent` + `X-Player` | account key, or the submit token that posted the character | read / set the character's consent to analysis |
 | `GET /v1/health` | none | `{"ok": true}` after a real database read; `503 {"ok": false}` when the read fails |
@@ -76,6 +80,46 @@ in `Authorization`, the rest in the body. A name or an id in the path is no rout
 string answers 400, so a client built to put something there fails at its first try. The one path parameter
 is `/v1/configs/<fingerprint>`, a version of the game's definitions. Both headers are in the CORS allowed
 headers.
+
+## Derived tokens
+
+Since 2026-11-24 the account page derives the tokens it makes from the account key, so it can show any of them
+again and the server holds nothing it could derive from (`src/rune_advisor/token_keys.py` is the reference):
+
+    auth = HKDF-SHA256(ikm = key, salt = "", info = "rune-advisor/v1/token/<id>/<epoch>/auth", 32 bytes)
+    enc  = HKDF-SHA256(ikm = key, salt = "", info = "rune-advisor/v1/token/<id>/<epoch>/enc", 32 bytes)
+    bearer        = "rat_" + base64url(auth)          sent as `Authorization: Bearer`; the server stores its SHA-256
+    planner token = bearer + "." + base64url(enc)     what a planner holds; the part after the dot is never sent
+
+- `id` is 32 random hex digits picked by the page. The server refuses an id or a value it already holds, live or
+  revoked: a reused id would derive a revoked token's value again.
+- `epoch` starts at 0. **Rotation** retires a value: the old one becomes a bare revoked row (its holder hears
+  "revoked") and the token gets the value derived at the next epoch. The operator does it after a leak with
+  `token rotate <id>`: the token then waits as `pending` (no usable value) until the account page, at its next
+  sign-in, registers the new value with `POST /v1/tokens/rotate {epoch, token}` (the current epoch of a pending
+  token). The page's own "replace" sends the next epoch of a live token, which retires the old value at once.
+  A random token (made the old way, or by `token new`) cannot be derived again, so `token rotate` revokes it.
+- `kind: "web"`: the web planner's token, read only, at most one per account. Every visit derives the same one.
+- A bearer value containing a dot is refused (400) before it is looked at: the settings key must never reach us.
+- Tokens are revoked one by one as before, and any token may revoke itself (`DELETE /v1/token`).
+
+## Settings blobs
+
+Each `read` token may keep one blob of at most `max_blob_bytes` (64 KiB): its planner's settings, encrypted by
+the planner with the token's `enc` key (AES-256-GCM, a fresh 12-byte nonce first, additional data
+`rune-advisor/v1/blob/<id>/<epoch>`). The server stores bytes it cannot read.
+
+- `GET /v1/blob` -> `{version, data: base64}`; 404 when there is none.
+- `POST /v1/blob {version, data}` writes when `version` is the one held (0: none yet) and answers the new one;
+  otherwise 412 with the version held, and the planner reads again before writing. Two tabs cannot silently
+  undo each other.
+- A blob is stored at its token's epoch. After a rotation the token's next read answers 409 `migrate` until the
+  account page re-encrypts it: it reads the blob with the key (`GET /v1/tokens/blob`), decrypts with the old
+  epoch's `enc`, encrypts with the new one and writes it with the new token.
+- Revoking a token or deleting its account deletes its blob. Blobs are the user's own settings, not plugin
+  data, so the long-lived accounts copy keeps them (the user, 2026-11-24).
+- Planners never take credentials or endpoints from a blob (no `[api]`, no tokens): whoever held a leaked token
+  could have written it.
 
 ## Accounts, scopes and quotas
 
@@ -156,7 +200,7 @@ by hand). Managing tokens with the account key does not count as activity.
 
 Admin CLI (same store): `token new <owner> [--scopes submit,read] [--label L] [--characters A,B]` (defaults to
 both scopes; makes the account `<owner>` when missing, with no key), `account key <owner>` issues a key to such an
-account, `account list|delete`, `token list|revoke|add`, `settings show|set|unset|chosen` (numbers only; the Turnstile secret is a file, see above; `settings.json`
+account, `account list|delete`, `token list|revoke|add|rotate`, `settings show|set|unset|chosen` (numbers only; the Turnstile secret is a file, see above; `settings.json`
 holds only the keys that were set, so the rest follow the code's defaults: `unset` returns one to its default,
 `chosen` lists what the file sets), `stats`, `sweep`, `migrate`, `check` (below).
 

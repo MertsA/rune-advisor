@@ -127,7 +127,9 @@ DEFAULT_SETTINGS = {"post_interval": 10.0, "retry_after": 300.0, "max_characters
                     "retention_days": 365.0, "account_ip_limit": 5.0, "account_ip_window": 86400.0, "trust_proxy": 0.0,
                     # Under load the server lengthens the interval it hands out, up to auto_interval_max seconds
                     # (auto_interval 0 = never: only post_interval counts). See `Load`.
-                    "auto_interval": 1.0, "auto_interval_max": 300.0}
+                    "auto_interval": 1.0, "auto_interval_max": 300.0,
+                    # A token's settings blob (encrypted by the client; the server stores bytes it cannot read).
+                    "max_blob_bytes": 65536.0}
 ON_OFF_SETTINGS = ("trust_proxy", "auto_interval")
 # The Turnstile secret is not a setting: `serve` reads it from a file the service manager provides (a systemd
 # credential), so it is never on a command line, in settings.json, in a backup or in any output.
@@ -135,6 +137,15 @@ TURNSTILE_CREDENTIAL = "turnstile_secret"  # the credential's name under $CREDEN
 TURNSTILE_FILE_ENV = "RUNE_ADVISOR_API_TURNSTILE_SECRET_FILE"  # or a path given explicitly (--turnstile-secret-file)
 SCOPES = ("submit", "read")
 ACCOUNT_KEY_PREFIX = "raa_"
+# Tokens the account page derives from the account key (docs/export-api.md "Derived tokens"): the page picks a random
+# id, derives the bearer value for (id, epoch) with HKDF and registers it, so it can show the token again later. The
+# planner's copy adds "." and an encryption key for its settings blob, which never reaches the server: a bearer value
+# with a dot in it is refused before it is looked at.
+DERIVED_TOKEN = re.compile(r"rat_[A-Za-z0-9_-]{43}")
+DERIVED_ID = re.compile(r"[0-9a-f]{32}")
+TOKEN_KINDS = ("", "web")  # "web": the web planner's token, one per account
+PENDING_HASH = "pending:"  # a rotated token's hash until the account page registers its new value (never a SHA-256)
+MIN_BLOB_BYTES = 12 + 16  # an AES-GCM nonce and tag around nothing
 MAX_LABEL, MAX_LIMITED_CHARACTERS = 60, 50
 MIN_INTERVAL, MAX_INTERVAL = 3.0, 3600.0  # the plugin clamps to the same range
 SCHEMA_VERSION = 2
@@ -222,8 +233,12 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS tokens (
     id TEXT PRIMARY KEY, hash TEXT UNIQUE NOT NULL, account TEXT NOT NULL, prefix TEXT NOT NULL DEFAULT '',
     label TEXT NOT NULL DEFAULT '', scopes TEXT NOT NULL, characters TEXT, created TEXT NOT NULL,
-    last_used TEXT, revoked TEXT);
+    last_used TEXT, revoked TEXT, epoch INTEGER NOT NULL DEFAULT 0, derived INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT '', pending TEXT);
 CREATE INDEX IF NOT EXISTS tokens_account ON tokens (account);
+CREATE TABLE IF NOT EXISTS blobs (
+    token TEXT PRIMARY KEY, account TEXT NOT NULL, epoch INTEGER NOT NULL, version INTEGER NOT NULL,
+    data BLOB NOT NULL, updated TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS states (
     account TEXT NOT NULL, player TEXT NOT NULL, updated REAL, seq INTEGER, posts INTEGER, record TEXT NOT NULL,
     id TEXT, consent TEXT, PRIMARY KEY (account, player));
@@ -256,6 +271,7 @@ TOMBSTONE_DAYS = 90  # a revoked token's hash is kept this long so a plugin stil
 DELETIONS_ENV = "RUNE_ADVISOR_API_DELETIONS"
 DELETION_LOG_DAYS = 90
 BARE = "account = '', prefix = '', label = '', scopes = '', characters = NULL, last_used = NULL"
+BARE_ROW = BARE + ", epoch = 0, derived = 0, kind = '', pending = NULL"  # the same, with the derived-token columns
 PLAYER_HEADER = "X-Player"  # the character a request is about, percent-encoded: kept out of URLs and so out of logs
 TOKEN_ID_HEADER = "X-Token-Id"  # the token (by its id, not its value) an account-key request is about: likewise
 CORS_ORIGIN = "https://runeadvisor.com"  # the site's account page; `serve --cors-origin` changes it, '' turns CORS off
@@ -268,6 +284,7 @@ class TokenInfo:
     account: str
     scopes: frozenset[str]
     characters: tuple[str, ...] | None = None  # None: every character of the account
+    epoch: int = 0
 
     def can_read(self, player: str) -> bool:
         return "read" in self.scopes and (self.characters is None or player.lower() in {c.lower() for c in self.characters})
@@ -305,6 +322,12 @@ class Store:
         # Stores from before consent (2026-11-14): every stored character starts without it.
         if "consent" not in {r["name"] for r in self.db.execute("PRAGMA table_info(states)")}:
             self.db.execute("ALTER TABLE states ADD COLUMN consent TEXT")
+        # Stores from before derived tokens (2026-11-24): every token is a random one at epoch 0.
+        have = {r["name"] for r in self.db.execute("PRAGMA table_info(tokens)")}
+        for column, decl in (("epoch", "INTEGER NOT NULL DEFAULT 0"), ("derived", "INTEGER NOT NULL DEFAULT 0"),
+                             ("kind", "TEXT NOT NULL DEFAULT ''"), ("pending", "TEXT")):
+            if column not in have:
+                self.db.execute(f"ALTER TABLE tokens ADD COLUMN {column} {decl}")
         if fresh and self.has_legacy_files():  # a data dir from before SQLite: carry it over once
             self.migrate_legacy()
 
@@ -509,7 +532,7 @@ class Store:
                     continue
                 kept.append(line)
                 if "token" in entry:
-                    redone += self._x(f"UPDATE tokens SET revoked = ?, created = ?, {BARE} WHERE hash = ? AND revoked IS NULL",
+                    redone += self._x(f"UPDATE tokens SET revoked = ?, created = ?, {BARE_ROW} WHERE hash = ? AND revoked IS NULL",
                                       (entry["day"], entry["day"], entry["token"]))
                 elif "consent" in entry:  # a change of consent: only the character's last one counts (below)
                     answers[entry["consent"]] = entry.get("value")
@@ -537,7 +560,7 @@ class Store:
             self._gc_pending()
             tokens = len(self.tokens_of(account))
             today = _today()
-            self._x(f"UPDATE tokens SET revoked = COALESCE(revoked, ?), created = COALESCE(revoked, ?), {BARE} "
+            self._x(f"UPDATE tokens SET revoked = COALESCE(revoked, ?), created = COALESCE(revoked, ?), {BARE_ROW} "
                     "WHERE account = ?", (today, today, account))
             self._x("DELETE FROM accounts WHERE id = ?", (account,))
             self._gc_token_posts()
@@ -560,9 +583,9 @@ class Store:
                     ((today - timedelta(days=TOMBSTONE_DAYS)).isoformat(),))
             self._gc_token_posts()  # also after the deletion log was applied again above
             # Rows revoked before tombstones were stripped this far (2026-11-13) kept a prefix, scopes and dates.
-            self._x(f"UPDATE tokens SET created = revoked, {BARE} WHERE revoked IS NOT NULL AND "
+            self._x(f"UPDATE tokens SET created = revoked, {BARE_ROW} WHERE revoked IS NOT NULL AND "
                     "(account != '' OR prefix != '' OR label != '' OR scopes != '' OR characters IS NOT NULL "
-                    "OR last_used IS NOT NULL OR created != revoked)")
+                    "OR last_used IS NOT NULL OR created != revoked OR epoch != 0 OR derived != 0 OR kind != '' OR pending IS NOT NULL)")
         if stale:
             log.info("expired %d inactive account(s)", len(stale))
         return stale
@@ -585,6 +608,83 @@ class Store:
             except sqlite3.IntegrityError:  # an id collision (the hash is unique by construction); try another
                 continue
         raise RuntimeError("could not allocate a token id")
+
+    def create_derived_token(self, account: str, token_id: str, token: str, label: str, scopes: Iterable[str],
+                             characters: Iterable[str] | None, kind: str = "") -> bool:
+        """Register a token the account page derived from the key: its id (chosen by the page) and bearer value at
+        epoch 0. False when the id or the value is already known, live or revoked: a reused id would derive a
+        revoked token's value again, so it is refused rather than reassigned."""
+        with self.lock:
+            if self._q("SELECT 1 FROM tokens WHERE id = ? OR hash = ?", (token_id, _token_hash(token))):
+                return False
+            self.ensure_account(account)
+            self._x("INSERT INTO tokens (id, hash, account, prefix, label, scopes, characters, created, epoch, derived, kind) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)",
+                    (token_id, _token_hash(token), account, token[:6], label, ",".join(sorted(scopes)),
+                     None if characters is None else json.dumps(list(characters)), _today(), kind))
+        return True
+
+    def _tombstone(self, token_hash: str, today: str) -> None:
+        """A bare revoked row for a value no longer in use (`BARE`), so a client still sending it hears "revoked"."""
+        for _ in range(5):
+            try:
+                self._x("INSERT INTO tokens (id, hash, account, scopes, created, revoked) VALUES (?, ?, '', '', ?, ?)",
+                        (secrets.token_hex(4), token_hash, today, today))
+                break
+            except sqlite3.IntegrityError:
+                if self._q("SELECT 1 FROM tokens WHERE hash = ?", (token_hash,)):
+                    break
+        self._note_deletion(token=token_hash)
+
+    def rotate(self, token_id: str, account: str | None = None) -> str:
+        """Retire a token's value: the old value becomes a bare revoked row (its holder is told "revoked"), the
+        token's epoch goes up and it waits as pending, with no usable value, until the account page derives the
+        new one and registers it (`register_rotated`). Its settings blob stays, encrypted at the old epoch, readable
+        only with the account key until the page re-encrypts it. For the operator after a leak, and for the page's
+        own "replace". Returns "pending", "already pending", "revoked" (a random token cannot be derived again, so
+        it is revoked instead) or "unknown"."""
+        today = _today()
+        with self.lock:
+            where, args = ("id = ? AND revoked IS NULL", (token_id,)) if account is None else (
+                "id = ? AND account = ? AND revoked IS NULL", (token_id, account))
+            rows = self._q(f"SELECT * FROM tokens WHERE {where}", args)
+            if not rows:
+                return "unknown"
+            row = rows[0]
+            if row["pending"]:
+                return "already pending"
+            if not row["derived"]:
+                self.revoke_id(row["account"], token_id)
+                return "revoked"
+            self._x("UPDATE tokens SET hash = ?, prefix = '', epoch = epoch + 1, pending = ? WHERE id = ?",
+                    (PENDING_HASH + token_id, today, token_id))
+            self._tombstone(row["hash"], today)
+            self._gc_token_posts()
+        return "pending"
+
+    def register_rotated(self, account: str, token_id: str, epoch: int, token: str) -> str | None:
+        """Give a derived token its value at `epoch`: the current epoch of a pending token (after `rotate`), or the
+        next one of a live token (the page's "replace": the old value is retired at once). None when done, else
+        why not."""
+        today = _today()
+        with self.lock:
+            rows = self._q("SELECT * FROM tokens WHERE id = ? AND account = ? AND revoked IS NULL", (token_id, account))
+            if not rows:
+                return "no such token"
+            row = rows[0]
+            if not row["derived"]:
+                return "this token was not derived from the account key"
+            if epoch != row["epoch"] + (0 if row["pending"] else 1):
+                return f"expected epoch {row['epoch'] + (0 if row['pending'] else 1)}"
+            if self._q("SELECT 1 FROM tokens WHERE hash = ?", (_token_hash(token),)):
+                return "this value is already known"
+            old = None if row["pending"] else row["hash"]
+            self._x("UPDATE tokens SET hash = ?, prefix = ?, epoch = ?, pending = NULL WHERE id = ?",
+                    (_token_hash(token), token[:6], epoch, token_id))
+            if old:
+                self._tombstone(old, today)
+                self._gc_token_posts()
+        return None
 
     def create_token(self, account: str, label: str, scopes: Iterable[str], characters: Iterable[str] | None) -> tuple[str, str]:
         """Mint a token for an account: (id, token). The token is shown once; the store keeps its SHA-256."""
@@ -614,7 +714,7 @@ class Store:
             return None, "revoked"
         characters = json.loads(row["characters"]) if row["characters"] else None
         return TokenInfo(row["id"], row["account"], frozenset(row["scopes"].split(",")),
-                         tuple(characters) if characters is not None else None), "ok"
+                         tuple(characters) if characters is not None else None, row["epoch"]), "ok"
 
     def owner(self, token: str) -> tuple[str | None, str]:
         info, status = self.lookup(token)
@@ -633,7 +733,7 @@ class Store:
         with self.lock:
             where, args = "revoked IS NULL AND (hash = ? OR (prefix != '' AND prefix = ?))", (_token_hash(token_or_prefix), token_or_prefix[:6])
             hashes = [r["hash"] for r in self._q(f"SELECT hash FROM tokens WHERE {where}", args)]
-            count = self._x(f"UPDATE tokens SET revoked = ?, created = ?, {BARE} WHERE {where}", (today, today, *args))
+            count = self._x(f"UPDATE tokens SET revoked = ?, created = ?, {BARE_ROW} WHERE {where}", (today, today, *args))
             self._gc_token_posts()
         for h in hashes:
             self._note_deletion(token=h)
@@ -643,7 +743,7 @@ class Store:
         today = _today()
         with self.lock:
             rows = self._q("SELECT hash FROM tokens WHERE id = ? AND account = ? AND revoked IS NULL", (token_id, account))
-            done = self._x(f"UPDATE tokens SET revoked = ?, created = ?, {BARE} WHERE id = ? AND account = ? AND revoked IS NULL",
+            done = self._x(f"UPDATE tokens SET revoked = ?, created = ?, {BARE_ROW} WHERE id = ? AND account = ? AND revoked IS NULL",
                            (today, today, token_id, account)) > 0
             self._gc_token_posts()
         if done and rows:
@@ -655,7 +755,8 @@ class Store:
         out = {"id": r["id"], "prefix": r["prefix"], "owner": r["account"], "label": r["label"],
                "scopes": r["scopes"].split(",") if r["scopes"] else [],
                "characters": json.loads(r["characters"]) if r["characters"] else None,
-               "created": r["created"], "last_used": r["last_used"]}
+               "created": r["created"], "last_used": r["last_used"],
+               "epoch": r["epoch"], "derived": bool(r["derived"]), "kind": r["kind"], "pending": r["pending"]}
         if r["revoked"]:
             out["revoked"] = r["revoked"]
         return out
@@ -666,7 +767,9 @@ class Store:
         for r in self._q("SELECT tp.token, s.player, tp.last_post FROM token_posts tp JOIN states s ON s.id = tp.character "
                          "WHERE s.account = ? ORDER BY s.player", (account,)):
             posted.setdefault(r["token"], []).append({"player": r["player"], "last_post": r["last_post"]})
-        return [{**self._token_row(r), "posted": posted.get(r["id"], [])} for r in self._q(
+        blobs = {r["token"]: {"version": r["version"], "epoch": r["epoch"], "bytes": r["size"]} for r in self._q(
+            "SELECT token, version, epoch, length(data) AS size FROM blobs WHERE account = ?", (account,))}
+        return [{**self._token_row(r), "posted": posted.get(r["id"], []), "blob": blobs.get(r["id"])} for r in self._q(
             "SELECT * FROM tokens WHERE account = ? AND revoked IS NULL ORDER BY created, id", (account,))]
 
     # Which token posts for which character: so the owner of several tokens can tell which plugin is which
@@ -746,7 +849,30 @@ class Store:
         """Drop links whose token is no longer live or whose character is no longer stored."""
         self._x("DELETE FROM token_posts WHERE token NOT IN (SELECT id FROM tokens WHERE revoked IS NULL) "
                 "OR character NOT IN (SELECT id FROM states)")
+        # A settings blob belongs to its token: it goes when the token is revoked or its account deleted.
+        self._x("DELETE FROM blobs WHERE token NOT IN (SELECT id FROM tokens WHERE revoked IS NULL)")
         self._posted_today.clear()
+
+    # Settings blobs: one per token, bytes the client encrypted (docs/export-api.md "Settings blobs").
+    def blob(self, token_id: str) -> dict[str, Any] | None:
+        rows = self._q("SELECT version, epoch, data FROM blobs WHERE token = ?", (token_id,))
+        return {"version": rows[0]["version"], "epoch": rows[0]["epoch"], "data": bytes(rows[0]["data"])} if rows else None
+
+    def put_blob(self, info: TokenInfo, data: bytes, version: int) -> tuple[bool, int]:
+        """Store a token's blob if `version` is the one held (0: none yet). (written, the version now held)."""
+        with self.lock:
+            held = self.blob(info.id)
+            current = held["version"] if held else 0
+            if version != current:
+                return False, current
+            self._x("INSERT INTO blobs (token, account, epoch, version, data, updated) VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(token) DO UPDATE SET epoch = excluded.epoch, version = excluded.version, "
+                    "data = excluded.data, updated = excluded.updated",
+                    (info.id, info.account, info.epoch, current + 1, data, _today()))
+            return True, current + 1
+
+    def delete_blob(self, token_id: str) -> bool:
+        return self._x("DELETE FROM blobs WHERE token = ?", (token_id,)) > 0
 
     def list_tokens(self) -> list[dict[str, Any]]:
         return [self._token_row(r) for r in self._q("SELECT * FROM tokens ORDER BY created, id")]
@@ -1075,7 +1201,7 @@ def loggable_path(path: str) -> str:
     """A request path for the log with character names taken out (`/v1/snapshot/<player>`): the service's log goes
     to the system journal, which is kept longer than the web server's access log."""
     path = path.split("?", 1)[0]
-    path = re.sub(r"(/v1/tokens/)(?!posted$)[^/]+", r"\1<id>", path)  # a token id (a route that no longer exists)
+    path = re.sub(r"(/v1/tokens/)(?!(?:posted|rotate|blob)$)[^/]+", r"\1<id>", path)  # a token id (a route that no longer exists)
     return re.sub(r"(/v1/(?:snapshot|state|players|consent)/)[^/]+", r"\1<player>", path)
 
 
@@ -1230,10 +1356,32 @@ class Service:
             if not (isinstance(characters, list) and characters and len(characters) <= MAX_LIMITED_CHARACTERS
                     and all(isinstance(c, str) and c.strip() for c in characters)):
                 raise ApiError(400, "characters must be a non-empty list of names")
+        derived = body.get("token")
+        if derived is not None:
+            token_id, kind = body.get("id"), body.get("kind", "")
+            if not (isinstance(derived, str) and DERIVED_TOKEN.fullmatch(derived)):
+                raise ApiError(400, "token must be a derived value (rat_ and 43 base64url characters)")
+            if not (isinstance(token_id, str) and DERIVED_ID.fullmatch(token_id)):
+                raise ApiError(400, "id must be 32 lowercase hex characters")
+            if kind not in TOKEN_KINDS:
+                raise ApiError(400, f"kind must be one of {', '.join(repr(k) for k in TOKEN_KINDS)}")
+            if kind == "web" and sorted(set(scopes)) != ["read"]:
+                raise ApiError(400, "the web planner's token reads only")
+        elif "id" in body or "kind" in body:
+            raise ApiError(400, "id and kind come with a derived token value")
         with self.store.lock:
             if len(self.store.tokens_of(account)) >= int(self.store.settings()["max_tokens"]):
                 raise ApiError(403, "token limit reached; revoke one first")
-            token_id, token = self.store.create_token(account, label.strip(), set(scopes), characters)
+            if derived is None:
+                token_id, token = self.store.create_token(account, label.strip(), set(scopes), characters)
+            else:
+                if kind and any(t["kind"] == kind for t in self.store.tokens_of(account)):
+                    raise ApiError(409, f"the account already has a {kind} token")
+                if not self.store.create_derived_token(account, token_id, derived, label.strip(), set(scopes),
+                                                       characters, kind):
+                    raise ApiError(409, "this id or value is already known; derive another")
+                return {"id": token_id, "label": label.strip(), "scopes": sorted(set(scopes)),
+                        "characters": characters, "created": _today(), "epoch": 0, "derived": True, "kind": kind}
         return {"id": token_id, "token": token, "label": label.strip(), "scopes": sorted(set(scopes)),
                 "characters": characters, "created": _today(),
                 "note": "Keep this token: it is shown once and cannot be recovered."}
@@ -1760,7 +1908,10 @@ class Handler(BaseHTTPRequestHandler):
         header = self.headers.get("Authorization", "")
         if not header.startswith("Bearer "):
             raise ApiError(401, "no bearer token")
-        return header[len("Bearer "):].strip()
+        value = header[len("Bearer "):].strip()
+        if "." in value:  # a planner token's settings key came along: never look at it, never let it near a log
+            raise ApiError(400, "send only the part of the token before the dot")
+        return value
 
     def _token(self, *scopes: str) -> TokenInfo:
         """The token's info if it is valid and holds one of `scopes` (any, when none are named)."""
@@ -1848,6 +1999,31 @@ class Handler(BaseHTTPRequestHandler):
             if names is None:
                 raise ApiError(404, "no such token")
             self._reply(200, {"deleted": names, "revoked": token_id})
+        elif route == ["v1", "tokens", "rotate"] and method == "POST":
+            # A derived token's new value: after the operator retired the old one (pending), or the page's "replace".
+            account, token_id = self._account(), self._token_id()
+            body = self._json(raw)
+            epoch, token = (body.get("epoch"), body.get("token")) if isinstance(body, dict) else (None, None)
+            if not (isinstance(epoch, int) and not isinstance(epoch, bool) and epoch >= 0):
+                raise ApiError(400, "epoch must be a whole number")
+            if not (isinstance(token, str) and DERIVED_TOKEN.fullmatch(token)):
+                raise ApiError(400, "token must be a derived value (rat_ and 43 base64url characters)")
+            refused = store.register_rotated(account, token_id, epoch, token)
+            if refused == "no such token":
+                raise ApiError(404, refused)
+            if refused:
+                raise ApiError(409, refused)
+            self._reply(200, {"id": token_id, "epoch": epoch})
+        elif route == ["v1", "tokens", "blob"] and method == "GET":
+            # A token's blob read with the key: how the page re-encrypts one left at an older epoch by a rotation.
+            account, token_id = self._account(), self._token_id()
+            if not any(t["id"] == token_id for t in store.tokens_of(account)):
+                raise ApiError(404, "no such token")
+            held = store.blob(token_id)
+            if held is None:
+                raise ApiError(404, "no blob")
+            self._reply(200, {"version": held["version"], "epoch": held["epoch"],
+                              "data": base64.b64encode(held["data"]).decode("ascii")})
         elif len(route) == 3 and route[:2] == ["v1", "players"] and method == "DELETE":
             if not store.delete_state(self._account(), route[2]):
                 raise ApiError(404, "no state for this player")
@@ -1855,6 +2031,41 @@ class Handler(BaseHTTPRequestHandler):
         else:
             return False
         return True
+
+    def _blob_route(self, method: str, raw: bytes) -> None:
+        """A read token's settings blob: bytes its planner encrypted with a key the server never sees. Versions
+        make a write conditional on what the writer last read, so two tabs cannot silently undo each other."""
+        info = self._token("read")
+        service = self.server.service
+        service.check_token_rate(info.id, "read")
+        store = service.store
+        if method == "DELETE":
+            self._reply(200, {"deleted": store.delete_blob(info.id)})
+            return
+        held = store.blob(info.id)
+        if method == "GET":
+            if held is None:
+                raise ApiError(404, "no blob", extra={"version": 0})
+            if held["epoch"] != info.epoch:  # left by a rotation: the account page re-encrypts it
+                raise ApiError(409, "migrate", extra={"version": held["version"], "epoch": held["epoch"]})
+            self._reply(200, {"version": held["version"], "data": base64.b64encode(held["data"]).decode("ascii")})
+            return
+        body = self._json(raw)
+        version, data = (body.get("version"), body.get("data")) if isinstance(body, dict) else (None, None)
+        if not (isinstance(version, int) and not isinstance(version, bool) and version >= 0):
+            raise ApiError(400, "version must be the version last read (0 when there is none)")
+        try:
+            blob = base64.b64decode(data, validate=True) if isinstance(data, str) else None
+        except ValueError:
+            blob = None
+        limit = int(store.settings()["max_blob_bytes"])
+        if blob is None or not MIN_BLOB_BYTES <= len(blob) <= limit:
+            raise ApiError(400 if blob is None or len(blob) < MIN_BLOB_BYTES else 413,
+                           f"data must be base64 of {MIN_BLOB_BYTES} to {limit} bytes")
+        written, current = store.put_blob(info, blob, version)
+        if not written:
+            raise ApiError(412, "the blob changed since it was read", extra={"version": current})
+        self._reply(200, {"version": current})
 
     def _handle(self, method: str) -> None:
         service = self.server.service
@@ -1906,6 +2117,15 @@ class Handler(BaseHTTPRequestHandler):
                     self._reply(200, reply)
                 else:
                     self._reply(200, self.server.service.upload_configs(info.account, post))
+                return
+            if route == ["v1", "blob"] and method in ("GET", "POST", "DELETE"):
+                self._blob_route(method, raw)
+                return
+            if route == ["v1", "token"] and method == "DELETE":
+                # Any token may revoke itself: for someone who has the token but not the account key.
+                info = self._token()
+                self.server.service.store.revoke_id(info.account, info.id)
+                self._reply(200, {"revoked": True})
                 return
             if route[:2] == ["v1", "consent"] and len(route) == 3 and method in ("GET", "POST"):
                 # A character's consent to analysis, asked for or changed: with the account key for any character
@@ -2059,7 +2279,7 @@ def serve(data_dir: Path, listen: str, prefix: str, configs: GameConfigs | None 
 
 def accounts_copy(data_dir: Path, out: Path) -> dict[str, int] | None:
     """Write a copy of the database with everything that came from a plugin taken out, for the long-lived
-    backup: accounts, tokens and config sets stay; every character state goes, and a read token limited to
+    backup: accounts, tokens, their settings blobs and config sets stay; every character state goes, and a read token limited to
     named characters (the names are the only other plugin-derived data) becomes a bare revoked hash, since a
     copy without the names could only make it unlimited. Restored from such a copy, the service has every
     account and plugin token; each plugin's next post is answered "send the full state" and the states come
@@ -2080,8 +2300,13 @@ def accounts_copy(data_dir: Path, out: Path) -> dict[str, int] | None:
         states = dest.execute("DELETE FROM states").rowcount
         if dest.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'token_posts'").fetchone():
             dest.execute("DELETE FROM token_posts")  # links to characters that are no longer in the copy
-        limited = dest.execute(f"UPDATE tokens SET revoked = ?, created = ?, {BARE} WHERE revoked IS NULL AND characters IS NOT NULL",
+        bare = BARE_ROW if "epoch" in {r[1] for r in dest.execute("PRAGMA table_info(tokens)")} else BARE
+        limited = dest.execute(f"UPDATE tokens SET revoked = ?, created = ?, {bare} WHERE revoked IS NULL AND characters IS NOT NULL",
                                (today, today)).rowcount
+        # Settings blobs are the user's own (encrypted) settings, not plugin data: they stay, except those of
+        # the tokens just made bare.
+        if dest.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'blobs'").fetchone():
+            dest.execute("DELETE FROM blobs WHERE token NOT IN (SELECT id FROM tokens WHERE revoked IS NULL)")
         dest.commit()
         dest.execute("VACUUM")  # the deleted rows' bytes must not stay in the file
         accounts = dest.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
@@ -2449,6 +2674,8 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("token")
     tsub.add_parser("list", help="list tokens (hash prefixes only)")
     tsub.add_parser("revoke", help="revoke a token by value or its first 6 characters").add_argument("token")
+    tsub.add_parser("rotate", help="retire a token's value after a leak: a derived token waits for the account page "
+                    "to register its next value (settings carried over); a random one is revoked").add_argument("id")
     acc = sub.add_parser("account", help="manage accounts")
     asub = acc.add_subparsers(dest="account_command", required=True)
     asub.add_parser("list")
@@ -2553,10 +2780,17 @@ def main(argv: list[str] | None = None) -> int:
                 print(e, file=sys.stderr)
                 return 2
             print(f"registered {args.token[:6]}... for {args.owner}")
+        elif args.token_command == "rotate":
+            result = store.rotate(args.id)
+            print(f"{args.id}: {result}")
+            if result == "unknown":
+                return 1
         elif args.token_command == "list":
             for e in store.list_tokens():
-                print(f"{e['prefix']}...  {e['owner']}  [{','.join(e['scopes'])}]  {e['label']!r}  created {e['created']}"
-                      f"  last used {e['last_used'] or 'never'}"
+                print(f"{e['id']}  {e['prefix']}...  {e['owner']}  [{','.join(e['scopes'])}]  {e['label']!r}  created {e['created']}"
+                      + (f"  derived, epoch {e['epoch']}" if e["derived"] else "")
+                      + (f"  PENDING since {e['pending']}" if e["pending"] else "")
+                      + f"  last used {e['last_used'] or 'never'}"
                       + (f"  limited to {', '.join(e['characters'])}" if e["characters"] else "")
                       + (f"  REVOKED {e['revoked']}" if e.get("revoked") else ""))
         else:
