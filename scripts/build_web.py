@@ -2,21 +2,30 @@
 browser under Pyodide (CPython compiled to WebAssembly).
 
     uv run scripts/build_web.py [--out dist/web] [--api http://127.0.0.1:8766] [--quest-list-from NAME]
+                                [--assets-url https://dl.runeadvisor.com/planner-assets/]
 
-What lands in <out>:
+What lands in <out>, in two parts. The small files the pages run are served by our own servers; the big ones
+can come from a CDN (Cloudflare in front of dl.runeadvisor.com), because the worker checks every file it fetches
+itself against a hash in the manifest, which comes from our servers (fetch's `integrity`). Pyodide's own files
+are loaded by Pyodide's loader and are not checked (the user's call, 2026-11-24).
+
   the site (site/), with the account page told where the planner is and, with --api, both pages told which
     API to talk to;
-  planner/               packaging/web/ (page, page script, worker) + the desktop app's app.js and style.css
-  planner/pyodide/       the pinned Pyodide runtime, from its npm package (checked against PYODIDE_SHA256)
-  planner/wheels/        this checkout's wheel (the planner and its data) and the pure-Python packages it
-                         imports: Pyodide's own builds of some (checked against Pyodide's lock file), the rest
-                         from PyPI (checked against PYPI_WHEELS)
-  planner/wiki-cache.zip the wiki tables the planner reads (achievements, their requirements, quests, GE
-                         prices), fetched now: a page cannot fetch them, so the worker unpacks them into the
-                         planner's HTTP cache. With --quest-list-from, also the list of quests that exist today,
-                         read from that player's Adventurer's Log (the list is the same for every player; only
-                         the titles are kept).
-  planner/manifest.json  what the worker loads
+  planner/                packaging/web/ (page, page script, worker), the desktop app's app.js and style.css,
+                          and Pyodide's small loader (pyodide.js: a worker may only import scripts from the
+                          page's own site)
+  planner/manifest.json   what the worker loads, with each file's hash and the day the wiki tables were fetched
+  planner-assets/         the big files, under names that never change meaning (cache them forever):
+    pyodide/<version>/    the pinned Pyodide runtime, from its npm package (checked against PYODIDE_SHA256)
+    files/<sha256>/<name> this checkout's wheel (the planner and its data), the pure-Python packages it imports
+                          (Pyodide's own builds of some, checked against Pyodide's lock file, the rest from PyPI,
+                          checked against PYPI_WHEELS), and wiki-cache.zip: the wiki tables the planner reads
+                          (achievements, their requirements, quests, GE prices), fetched now, since a page cannot
+                          fetch them. With --quest-list-from, also the list of quests that exist today, read from
+                          that player's Adventurer's Log (the same for every player; only the titles are kept).
+
+--assets-url names where planner-assets/ is served (default: /planner-assets/ on the same site). For the live
+site, upload planner-assets/ there and serve the rest of <out> from runeadvisor.com without it.
 
 Downloads are kept in <out>/../web-cache. Serve the result with scripts/serve_web.py.
 """
@@ -24,6 +33,8 @@ Downloads are kept in <out>/../web-cache. Serve the result with scripts/serve_we
 from __future__ import annotations
 
 import argparse
+import base64
+import datetime
 import hashlib
 import io
 import json
@@ -76,36 +87,44 @@ def pypi_url(filename: str) -> str:
     return next(f["url"] for f in files if f["filename"] == filename)
 
 
-def runtime(cache: Path, out: Path) -> list[str]:
-    """Pyodide into out/pyodide and its wheels into out/wheels; returns the wheel file names."""
+def hashed(src: Path, assets: Path, name: str | None = None) -> dict:
+    """Copy `src` to assets/files/<sha256>/<name>: {path, integrity} for the manifest."""
+    data = src.read_bytes()
+    digest = hashlib.sha256(data)
+    path = f"files/{digest.hexdigest()}/{name or src.name}"
+    (assets / path).parent.mkdir(parents=True, exist_ok=True)
+    (assets / path).write_bytes(data)
+    return {"path": path, "integrity": "sha256-" + base64.b64encode(digest.digest()).decode("ascii")}
+
+
+def runtime(cache: Path, planner: Path, assets: Path) -> list[Path]:
+    """Pyodide's loader into planner/, the rest of it into assets/pyodide/<version>/; returns the wheels to ship."""
     tgz = fetch(f"https://registry.npmjs.org/pyodide/-/pyodide-{PYODIDE}.tgz", cache / f"pyodide-{PYODIDE}.tgz", PYODIDE_SHA256)
-    (out / "pyodide").mkdir(parents=True)
+    core = assets / "pyodide" / PYODIDE
+    core.mkdir(parents=True)
     with tarfile.open(tgz) as tar:
         for name in PYODIDE_FILES:
-            (out / "pyodide" / name).write_bytes(tar.extractfile(f"package/{name}").read())
-    lock = json.loads((out / "pyodide" / "pyodide-lock.json").read_text())["packages"]
+            (planner if name == "pyodide.js" else core).joinpath(name).write_bytes(tar.extractfile(f"package/{name}").read())
+    lock = json.loads((core / "pyodide-lock.json").read_text())["packages"]
     wheels = []
     for package in PYODIDE_PACKAGES:
         entry = lock[package]
         if entry["depends"]:
             sys.exit(f"{package} has dependencies in this Pyodide ({entry['depends']}): list them in PYODIDE_PACKAGES")
-        fetched = fetch(f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE}/full/{entry['file_name']}",
-                        cache / entry["file_name"], entry["sha256"])
-        shutil.copy(fetched, out / "wheels" / fetched.name)
-        wheels.append(fetched.name)
+        wheels.append(fetch(f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE}/full/{entry['file_name']}",
+                            cache / entry["file_name"], entry["sha256"]))
     for filename, sha in PYPI_WHEELS.items():
-        fetched = fetch("" if (cache / filename).exists() else pypi_url(filename), cache / filename, sha)
-        shutil.copy(fetched, out / "wheels" / filename)
-        wheels.append(filename)
+        wheels.append(fetch("" if (cache / filename).exists() else pypi_url(filename), cache / filename, sha))
     return wheels
 
 
-def planner_wheel(out: Path) -> str:
+def planner_wheel(out: Path) -> Path:
     """This checkout's wheel, data included."""
-    before = set(out.iterdir())
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True)
     subprocess.run(["uv", "build", "--wheel", "-o", str(out)], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
-    (wheel,) = [p for p in set(out.iterdir()) - before if p.suffix == ".whl"]
-    return wheel.name
+    (wheel,) = [p for p in out.iterdir() if p.suffix == ".whl"]
+    return wheel
 
 
 def wiki_cache(cache: Path, dest: Path, quest_player: str | None) -> dict:
@@ -163,24 +182,27 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=ROOT / "dist" / "web")
     ap.add_argument("--api", help="the API the pages talk to (default: the one the site names)")
     ap.add_argument("--quest-list-from", metavar="NAME", help="a player whose Adventurer's Log supplies today's quest titles")
+    ap.add_argument("--assets-url", default="/planner-assets/",
+                    help="where planner-assets/ is served (default: the same site); a CDN for the live site")
     args = ap.parse_args()
     out, cache = args.out.resolve(), args.out.resolve().parent / "web-cache"
     if out.exists():
         shutil.rmtree(out)
     site(out, args.api)
-    planner = out / "planner"
-    (planner / "wheels").mkdir()
-    wheels = runtime(cache, planner)
-    wheels.append(planner_wheel(planner / "wheels"))
-    counts = wiki_cache(cache, planner / "wiki-cache.zip", args.quest_list_from)
+    planner, assets = out / "planner", out / "planner-assets"
+    wheels = runtime(cache, planner, assets)
+    wheels.append(planner_wheel(cache / "planner-wheel"))
+    counts = wiki_cache(cache, cache / "wiki-cache.zip", args.quest_list_from)
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    (planner / "manifest.json").write_text(json.dumps(
-        {"version": commit, "pyodide": PYODIDE, "wheels": wheels, "cache": "wiki-cache.zip"}, indent=1))
+    (planner / "manifest.json").write_text(json.dumps({
+        "version": commit, "pyodide": f"pyodide/{PYODIDE}/", "assets": args.assets_url,
+        "wheels": [hashed(w, assets) for w in wheels], "cache": hashed(cache / "wiki-cache.zip", assets),
+        "tables_fetched": datetime.date.today().isoformat()}, indent=1))
     size = lambda p: sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
     print(f"built {out}")
     print(f"  wiki tables: {counts}")
-    for part in ("pyodide", "wheels", "wiki-cache.zip"):
-        print(f"  planner/{part}: {size(planner / part) / 1e6:.1f} MB")
+    print(f"  planner (our servers): {size(planner) / 1e6:.1f} MB")
+    print(f"  planner-assets ({args.assets_url}): {size(assets) / 1e6:.1f} MB")
     return 0
 
 

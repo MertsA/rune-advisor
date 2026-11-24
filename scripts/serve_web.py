@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import json
 import http.server
 import subprocess
 import sys
@@ -31,23 +32,34 @@ sys.path.insert(0, str(ROOT / "src"))
 ACCOUNT = "dev"
 
 
-def csp(api: str) -> str:
+def csp(api: str, assets: str = "") -> str:
     """The real site's policy (default-src 'self', connect-src the API) plus what Pyodide needs: compiling
-    WebAssembly. Workers and their fetches are same-origin, so 'self' covers them."""
-    return (f"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' {api}; "
-            "worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+    WebAssembly, and its files from the assets host when that is not this site (Pyodide imports its runtime
+    module from there and fetches the rest). The worker itself is same-origin."""
+    extra = f" {assets}" if assets else ""
+    return (f"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'{extra}; style-src 'self'; "
+            f"connect-src 'self' {api}{extra}; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+
+
+def assets_origin(manifest: Path) -> str:
+    """The origin of the build's planner assets when they are not on this site ('' when they are)."""
+    url = json.loads(manifest.read_text()).get("assets", "")
+    return "/".join(url.split("/")[:3]) if "://" in url else ""
 
 
 class Site(http.server.SimpleHTTPRequestHandler):
     api = ""
+    assets = ""
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map,
                       ".wasm": "application/wasm", ".mjs": "text/javascript", ".js": "text/javascript"}
 
     def end_headers(self) -> None:
-        self.send_header("Content-Security-Policy", csp(self.api))
+        self.send_header("Content-Security-Policy", csp(self.api, self.assets))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Cache-Control", "no-cache")
+        # What the live site should do too: the hashed and versioned assets never change; the rest is revalidated.
+        immutable = self.path.startswith("/planner-assets/")
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable" if immutable else "no-cache")
         super().end_headers()
 
     def log_message(self, fmt, *args) -> None:
@@ -134,6 +146,7 @@ def main() -> int:
                     sys.exit("the API did not start")
                 time.sleep(0.2)
         Site.api = api
+        Site.assets = assets_origin(out / "planner" / "manifest.json")
         httpd = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), functools.partial(Site, directory=str(out)))
         print(f"site     {origin}/planner/")
         print(f"API      {api}")

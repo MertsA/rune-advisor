@@ -75,7 +75,7 @@
       calls.clear();
     };
     ready = call("init", { api: API, token, settings: settings["rune_advisor.toml"], overrides: settings["overrides.toml"] });
-    ready.then((info) => engine(`Planner ready (started in ${info.seconds.toFixed(1)} s).`),
+    ready.then((info) => engine(`Planner ready (started in ${info.seconds.toFixed(1)} s; wiki data from ${info.tables || "unknown"}).`),
       (e) => engine(`The planner failed to start: ${e.message}`));
   }
 
