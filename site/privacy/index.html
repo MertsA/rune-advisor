@@ -22,7 +22,7 @@
   <main>
 <!-- Rendered from docs/policy/privacy.md by scripts/build_site_pages.py. Edit the document, not this page. -->
 <h1>Privacy policy</h1>
-<p class="muted">Version of 16 November 2026. The policy describes what the service does and what it may come to do; where the two differ today, it says so.</p>
+<p class="muted">Version of 24 November 2026. The policy describes what the service does and what it may come to do; where the two differ today, it says so.</p>
 <h2>1. Who is responsible</h2>
 <p>Rune Advisor is operated independently by an individual developer in Washington State, United States, not a
 company. That person is responsible for the data described here (&quot;we&quot; and &quot;the operator&quot; below).</p>
@@ -60,11 +60,18 @@ not collect other players' data, your Jagex account's login details, or anything
 as the hiscores and the Adventurer's Log) for the information about your character that you have chosen to
 make public in your game settings, and keep it with your character's data. What you have set to private in the
 game is not available to us this way. The service does not do this yet.</p>
+<h3>When you use the web planner</h3>
+<p>The web planner runs in your browser. It reads your characters' data from the API with your account's planner
+token, the same way a planner on your computer does, and does its planning on your device: what it works out
+is not sent to us. It keeps the name of the character you last opened in your browser's storage and its token
+for as long as the tab is open, and sends the token with each request to the API.</p>
 <h3>When you make an account</h3>
 <p>An account is a random key: there is no email address, name or password. We store a hash of the key, a random
 account id, and when the account was made and last used. For each token: a hash of it, its first six
 characters, the label you typed, what it may do, when it was made and last used, and which of your characters
-it has posted for, so that you can tell your tokens apart. For each character: whether, and since when, you
+it has posted for, so that you can tell your tokens apart. Tokens made on the account page are worked out in
+your browser from your account key, so that the page can show them to you again later; we receive each token
+only as any other, and store only a hash of it. For each character: whether, and since when, you
 allow analysis (section 3). The internet (IP) address
 an account was made from may be stored, to limit how many accounts can be made from one place.</p>
 <p>Making an account runs a check that you are not a bot, provided by Cloudflare (Turnstile). For it your
@@ -72,6 +79,12 @@ browser contacts Cloudflare, which sees your internet address and technical deta
 send Cloudflare the address your request came from so that it can confirm the check. Cloudflare uses this to
 tell people from bots and to improve that detection, not to identify you. It happens only when you make an
 account: not when you open one, and never from the plugin.</p>
+<h3>Settings you save with a token</h3>
+<p>A planner can save its settings with its token, so that they follow you to another browser or computer. They
+are encrypted on your device, with a key that comes from the token and that we never receive, before they are
+sent. We store them encrypted, with when they were last changed and how large they are, and cannot read them.
+Settings can hold whatever you type into them, character names included; they are deleted with the token or
+the account.</p>
 <h3>If you send a report from the planner</h3>
 <p>The planner may let you report a problem with its advice (a planned feature, not built yet). A report holds
 what you write and which account and character it is about. Only if you choose to allow it with that report,
@@ -86,8 +99,12 @@ is yours, for example with one of its tokens.</p>
 and size, the referring page and the browser or client name. Keys and tokens are not logged, and neither is
 the content of what the plugin posts.</p>
 <h3>Cookies and usage statistics</h3>
-<p>The site sets no cookies today, and loads nothing from other companies' servers except the bot check when you
-make an account (above); the <a href="/account/">account page</a> keeps your key in the page's memory only. We may measure how the site and the service are used (for example
+<p>The site sets no cookies today. The <a href="/account/">account page</a> keeps your key in the page's memory only; the web
+planner keeps what section 2 says above in your browser's storage. Large downloads, such as the web planner's
+program files and the planner's data updates, are delivered through Cloudflare's network: for them your browser
+or the planner connects to Cloudflare, which sees your internet address and technical details of the request,
+and serves files that are the same for everyone. Apart from that and the bot check when you make an account
+(above), the site loads nothing from other companies' servers. The API is not reached through Cloudflare. We may measure how the site and the service are used (for example
 unique visitors, or how many players are connected at once), and may use cookies or similar means for that.
 Such statistics are kept in a form that does not identify you. There is no advertising.</p>
 <h2>3. What it is used for</h2>
@@ -132,11 +149,11 @@ Simple counts of how the service is used, such as how many characters allow anal
 <ul>
 <li><strong>Providing the service you asked for</strong>, under the <a href="/terms/">terms</a> you accept by making an account and
 giving your plugin a token: storing what your plugin sends, handing it to your planner, keeping your account
-and tokens, looking up your character's public data when you have turned that on, and handling a report you
+and tokens, keeping the settings you save with a token, looking up your character's public data when you have turned that on, and handling a report you
 send from the planner.</li>
 <li><strong>Our legitimate interests</strong> in keeping the service secure and working and in knowing how it is used:
 server logs, limits on how quickly accounts can be made and requests sent, the bot check when an account is
-made, backups, records of deletions, and usage statistics that do not identify you. You can object to this
+made, delivering large downloads through a content delivery network, backups, records of deletions, and usage statistics that do not identify you. You can object to this
 (section 8).</li>
 <li><strong>Legal obligations:</strong> answering a request you make about your data, and keeping a record that we did.</li>
 <li><strong>Your consent:</strong> analysing what your plugin sends to improve the planner (above). Nothing else relies on
@@ -149,8 +166,8 @@ works from public sources only. Nothing here is used to make decisions about you
 <li><strong>You</strong>, and anyone you give a token to (for example a group mate, with a <code>read</code> token limited to the
 characters you choose).</li>
 <li><strong>The operator</strong>, who runs the service.</li>
-<li><strong>Service providers</strong> the operator uses to run the service, such as the company that hosts the server and
-Cloudflare for the bot check, only as far as running the service requires.</li>
+<li><strong>Service providers</strong> the operator uses to run the service, such as the company that hosts the server, and
+Cloudflare for the bot check and for delivering large downloads, only as far as running the service requires.</li>
 </ul>
 <p>Game data read through the plugin belongs to Jagex Ltd under its terms for plugins; it is used only for this
 tool's function and is deleted when you ask.</p>
@@ -158,6 +175,9 @@ tool's function and is deleted when you ask.</p>
 <p>On servers in the <strong>United States</strong>, where the operator and the hosting company are. Your plugin and your
 browser send data there directly. An analysis you allowed (section 3) may read the data
 from elsewhere in the United States, on other equipment the operator uses for it.</p>
+<p>Downloads delivered through Cloudflare (section 2) are handled at a Cloudflare location near you, which may be
+outside the United States; they are files that are the same for everyone, and what Cloudflare sees of your
+request is your internet address and technical details of it.</p>
 <p>Backups may also be kept with a storage provider in the United States or the European Union. They are
 encrypted before they leave the server, and the key that opens them is not kept with them.</p>
 <p>If you are in the UK or the EU, this means your data is held in a country that neither has found to protect
@@ -187,6 +207,10 @@ EU.</p>
 <td>Until you delete it, or <strong>one year after it was last used</strong> (a plugin posting or a planner reading), when it is deleted automatically with all its characters.</td>
 </tr>
 <tr>
+<td>Settings saved with a token</td>
+<td>Until you change or delete them, the token is revoked, or the account is deleted or expires. They are encrypted, and we cannot read them.</td>
+</tr>
+<tr>
 <td>Records of deletions</td>
 <td>When you delete an account or a character, or revoke a token, a record that it happened is kept for about 90 days: random ids and hashes, never a character name or a token. It lets a plugin still holding a revoked token be told to stop, and makes sure a restore from a backup cannot bring deleted data back. These records are identifiers of our own, not data from the game.</td>
 </tr>
@@ -204,7 +228,7 @@ EU.</p>
 </tr>
 <tr>
 <td>Backups</td>
-<td>Backups are encrypted. Backups that contain character data are kept for up to 14 days, so a deleted character's data is gone from every copy within that time. Backups of account records only (the hashes and ids above, no character data or names) are kept for up to 90 days. Deleted data is deleted again if a backup is ever restored. One exception: a restore can only repeat the deletions it has a record of. If the record of your deletion is itself lost before any backup has captured it, restoring a backup would bring the deleted account or character back, and you would need to delete it again.</td>
+<td>Backups are encrypted. Backups that contain character data are kept for up to 14 days, so a deleted character's data is gone from every copy within that time. Backups of account records only (the hashes and ids above, and settings saved with tokens, still encrypted; no character data from the plugin) are kept for up to 90 days. Deleted data is deleted again if a backup is ever restored. One exception: a restore can only repeat the deletions it has a record of. If the record of your deletion is itself lost before any backup has captured it, restoring a backup would bring the deleted account or character back, and you would need to delete it again.</td>
 </tr>
 </tbody>
 </table></div>
@@ -212,6 +236,9 @@ EU.</p>
 <ul>
 <li>All traffic to the site and the API is encrypted (HTTPS).</li>
 <li>Keys and tokens are stored only as hashes. A token for the plugin cannot read anything back.</li>
+<li>Settings saved with a token are encrypted on your device with a key we never receive.</li>
+<li>If we find that a token may have been exposed, we can retire it; the account page then gives it a new value
+the next time you open it, and settings saved with it carry over.</li>
 <li>Backups are encrypted.</li>
 <li>Access to the server is limited to the operator and the service providers in section 4, and stored character
 data is accessed only when running the service requires it.</li>
@@ -219,9 +246,11 @@ data is accessed only when running the service requires it.</li>
 <h2>8. Your choices</h2>
 <ul>
 <li><strong>See your data.</strong> A <code>read</code> token returns everything stored for a character; the <a href="/account/">account
-page</a> shows what is stored about the account and its tokens.</li>
+page</a> shows what is stored about the account and its tokens. Settings saved with a token are
+shown by the planner that uses it; we cannot read them.</li>
 <li><strong>Delete it.</strong> On the <a href="/account/">account page</a>, with your key: one character, or the whole account. This
-takes effect at once on the live service; see section 6 for what remains for a time.</li>
+takes effect at once on the live service; see section 6 for what remains for a time. Revoking a token
+deletes the settings saved with it.</li>
 <li><strong>Allow or stop allowing analysis</strong>, character by character. In the plugin's settings, or on the
 <a href="/account/">account page</a> with your key or the plugin's token. It is off unless you turn it on (section 3).</li>
 <li><strong>Stop sending.</strong> Remove the token from the plugin's settings, revoke it, or uninstall the plugin.</li>

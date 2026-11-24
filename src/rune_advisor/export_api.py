@@ -1975,7 +1975,7 @@ class Handler(BaseHTTPRequestHandler):
         if route == ["v1", "accounts"] and method == "POST":
             self._reply(201, service.create_account(self._json(raw), self._client_ip()))
         elif route == ["v1", "account"] and method == "GET":
-            quotas = {k: int(v) for k, v in store.settings().items() if k in ("max_characters", "max_tokens", "retention_days")}
+            quotas = {k: int(v) for k, v in store.settings().items() if k in ("max_characters", "max_tokens", "retention_days", "max_blob_bytes")}
             account = self._account()
             # The characters by name with the day each last posted, so the page can show what the account holds.
             held = [{"player": p["player"], "posts": p["posts"], **(store.consent_of(account, p["player"]) or {}),

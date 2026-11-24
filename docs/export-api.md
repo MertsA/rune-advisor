@@ -58,7 +58,7 @@ routes, small JSON bodies, one process behind nginx.
 | `GET /v1/state` + `X-Player` | `read` token | the raw stored record (hashes, layout directories, base64 canonical bytes) |
 | `GET /v1/configs`, `/v1/configs/<fp>` | any token | the global config generations plus the caller's own pending ones |
 | `POST /v1/accounts` | none | body `{captcha}`; `201 {account, key}`, the key shown once |
-| `GET /v1/account` | account key | id, created and last-active days, character and token counts, quotas |
+| `GET /v1/account` | account key | id, created and last-active days, character and token counts, quotas (`max_characters`, `max_tokens`, `retention_days`, `max_blob_bytes`) |
 | `DELETE /v1/account` | account key | delete the account, its tokens and every character's state |
 | `GET /v1/tokens` | account key | live tokens: `id`, `prefix`, `label`, `scopes`, `characters`, `created`, `last_used` (days), `epoch`, `derived`, `kind`, `pending` (the day a rotation retired its value), `blob` (`{version, epoch, bytes}` or null) |
 | `POST /v1/tokens` | account key | body `{label, scopes: ["submit"\|"read"], characters: [names]}`; `201` with the token, shown once. With `{id, token, kind}` added: register a derived token (below), nothing returned but its metadata |

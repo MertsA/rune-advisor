@@ -159,6 +159,7 @@
     fact(facts, "Last used", a.last_active);
     fact(facts, "Characters", a.characters + " of " + a.max_characters + " allowed");
     fact(facts, "Tokens", a.tokens + " of " + a.max_tokens + " allowed");
+    if (a.max_blob_bytes) fact(facts, "Settings saved per token", "up to " + Math.floor(a.max_blob_bytes / 1024) + " KiB");
     fact(facts, "Deleted if unused for", a.retention_days + " days");
 
     // The characters stored under the account, with the day each last posted.

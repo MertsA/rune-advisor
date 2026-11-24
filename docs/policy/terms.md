@@ -1,13 +1,13 @@
 ---
 page: terms
-revision: Version of 16 November 2026.
+revision: Version of 24 November 2026.
 ---
 
 # Terms of use
 
 ## 1. What this is
 
-Rune Advisor is a free, fan-made planning tool for RuneScape 3: a planner that runs on your computer, an
+Rune Advisor is a free, fan-made planning tool for RuneScape 3: a planner that runs on your computer or in your browser, an
 in-game plugin for the official plugin system, and an API that passes your character's state from one to the
 other. It is run independently by an individual developer in Washington State, United States, not a company. It is not affiliated with, endorsed by
 or supported by Jagex Ltd.
@@ -41,15 +41,19 @@ courts.
 
 - An account is a key that only you hold. Keep it safe: whoever has it controls the account, and it cannot be
   recovered if lost.
+- Tokens made on the account page can be shown again there with your key. If we believe a token may have been
+  exposed, we may replace it; whatever used it then needs the new token, which the account page shows.
+- Settings saved with a token are encrypted with a key we do not have. If you lose both the account key and
+  the token, they cannot be recovered.
 - You must be at least 13 years old to use the service, and if you are under 18 you need your parent's or
   guardian's permission to agree to these terms.
 - Use the plugin only for characters that are yours.
-- Accounts not used for a year are deleted. Limits apply (10 characters and 20 tokens per account).
+- Accounts not used for a year are deleted. Limits apply, shown on the account page.
 
 ## 4. Fair use
 
 Do not try to break or overload the service, read data that is not yours, post invented data, or use the API
-for anything other than the plugin and the planner. Accounts and tokens that do may be removed without notice,
+or the storage for settings for anything other than the plugin and the planner. Accounts and tokens that do may be removed without notice,
 and addresses may be blocked.
 
 ## 5. Jagex's rules still apply
