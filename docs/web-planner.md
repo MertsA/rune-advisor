@@ -113,7 +113,7 @@ First visit downloads about 17.5 MB: Pyodide 13.5 MB, wheels 3.3 MB (since 2026-
 click), wiki tables 0.6 MB. Served compressed the WebAssembly file shrinks further; nothing here measures that.
 
 2026-11-24 on the desktop: the guide for the same character takes 124 s end to end (`radv guide`, start-up
-included). Features added since the measurements above had pushed it to over 13 minutes before c38b948 brought
+included). Features added since the measurements above had pushed it to over 13 minutes before 315f335 brought
 it back. In headless Chromium the same guide took 255 s (2026-11-24, with the desktop guide running beside it
 part of the time, so on the slow side).
 
