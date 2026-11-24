@@ -10,15 +10,14 @@ encrypted with the token, and the big files split off for a CDN with hash checks
 
 ## Try it
 
-    uv run scripts/build_web.py --api http://127.0.0.1:8766 --quest-list-from YourName
+    uv run scripts/build_web.py --api http://127.0.0.1:8766
     uv run scripts/serve_web.py --copy-character YourName
 
 `build_web.py` writes `dist/web/`: the site plus `/planner/`. `serve_web.py` serves it at
 http://127.0.0.1:8765/planner/ and starts an export API of its own on port 8766 with a throwaway data folder
 (`dist/web-dev/api`) and one account. The account's key is in `dist/web-dev/account-key.txt`.
 `--copy-character` copies a character's stored state from the API named in `rune_advisor.toml` into that
-account, so there is something real to plan for. `--quest-list-from` names any player whose Adventurer's Log
-supplies the list of quests that exist today (the same for everyone; only the titles are kept).
+account, so there is something real to plan for.
 
 ## How it fits together
 
@@ -64,11 +63,12 @@ blob at the next save.
 - **Player data is the plugin's export only.** A page cannot read Jagex's hiscores or Adventurer's Log
   (no cross-origin access), so there is no planning for a name without the plugin. Ironman status, which the
   desktop planner takes from the hiscores, is a setting (`ironman = true`, or a `group`).
-- **Wiki tables are fixed at build time.** Achievements, their requirements, quests and GE prices are
-  fetched by `build_web.py` and shipped as the planner's HTTP cache (`CachedClient.keep_stale`). They are as
-  old as the build. They belong in the data package.
-- **The quest list** comes from one player's Adventurer's Log at build time. It also belongs in the data
-  package.
+- **Wiki tables come from the data package** (`data/wiki_tables/`, inside the planner's wheel), as they now do
+  for the desktop planner too: achievements, their requirements, quests, and the list of quests that exist.
+  The page shows the day they were fetched. A new data release needs a site rebuild to reach the web planner.
+- **GE prices** (normal accounts only) are fetched by `build_web.py` and shipped as the planner's HTTP cache
+  (`CachedClient.keep_stale`, `price-cache.zip`): as old as the build. They change daily, so they are not
+  packaged data.
 - **Settings** are the desktop planner's two files as text boxes, synced through the token's blob (above). The
   desktop planner does not read the blob yet.
 - **No data package updates**, no archives, no plugin database, no `radv` commands.
@@ -114,14 +114,13 @@ click), wiki tables 0.6 MB. Served compressed the WebAssembly file shrinks furth
 
 2026-11-24 on the desktop: the guide for the same character takes 124 s end to end (`radv guide`, start-up
 included). Features added since the measurements above had pushed it to over 13 minutes before c38b948 brought
-it back; the browser was not measured again.
+it back. In headless Chromium the same guide took 255 s (2026-11-24, with the desktop guide running beside it
+part of the time, so on the slow side).
 
 ## Not done
 
 - Not deployed. The servers' side is still to set up: the CDN with its cache rules and CORS, a name to upload
   to, and the planner's CSP.
 - Only Chromium was driven (headless). Firefox and Safari are untested.
-- The wiki tables and the quest list are fixed at build time; they belong in the data package. The page now says
-  the day they were fetched.
 - No settings form (two text boxes); the desktop planner does not sync settings yet.
 - The privacy policy does not mention the planner page, its token, the settings blobs or the CDN.

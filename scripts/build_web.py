@@ -1,7 +1,7 @@
 """Builds the web planner (a proof of concept): the public site plus /planner/, where the planner runs in the
 browser under Pyodide (CPython compiled to WebAssembly).
 
-    uv run scripts/build_web.py [--out dist/web] [--api http://127.0.0.1:8766] [--quest-list-from NAME]
+    uv run scripts/build_web.py [--out dist/web] [--api http://127.0.0.1:8766]
                                 [--assets-url https://dl.runeadvisor.com/planner-assets/]
 
 What lands in <out>, in two parts. The small files the pages run are served by our own servers; the big ones
@@ -14,15 +14,14 @@ are loaded by Pyodide's loader and are not checked (the user's call, 2026-11-24)
   planner/                packaging/web/ (page, page script, worker), the desktop app's app.js and style.css,
                           and Pyodide's small loader (pyodide.js: a worker may only import scripts from the
                           page's own site)
-  planner/manifest.json   what the worker loads, with each file's hash and the day the wiki tables were fetched
+  planner/manifest.json   what the worker loads, with each file's hash
   planner-assets/         the big files, under names that never change meaning (cache them forever):
     pyodide/<version>/    the pinned Pyodide runtime, from its npm package (checked against PYODIDE_SHA256)
     files/<sha256>/<name> this checkout's wheel (the planner and its data), the pure-Python packages it imports
-                          (Pyodide's own builds of some, checked against Pyodide's lock file, the rest from PyPI,
-                          checked against PYPI_WHEELS), and wiki-cache.zip: the wiki tables the planner reads
-                          (achievements, their requirements, quests, GE prices), fetched now, since a page cannot
-                          fetch them. With --quest-list-from, also the list of quests that exist today, read from
-                          that player's Adventurer's Log (the same for every player; only the titles are kept).
+                          (Pyodide's own builds of some, checked against Pyodide's lock file), and
+                          price-cache.zip: GE prices fetched now (a page cannot fetch them). The wiki's tables
+                          and the list of quests are data/wiki_tables/ in the data package, inside the wheel
+                          (scripts/build_wiki_tables.py).
 
 --assets-url names where planner-assets/ is served (default: /planner-assets/ on the same site). For the live
 site, upload planner-assets/ there and serve the rest of <out> from runeadvisor.com without it.
@@ -34,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import datetime
 import hashlib
 import io
 import json
@@ -123,35 +121,24 @@ def planner_wheel(out: Path) -> Path:
     return wheel
 
 
-def wiki_cache(cache: Path, dest: Path, quest_player: str | None) -> dict:
-    """The planner's wiki fetches, made here and zipped as its HTTP cache (http/<key>.json, quest_titles.json)."""
+def price_cache(cache: Path, dest: Path) -> dict:
+    """GE prices, fetched now and zipped as the planner's HTTP cache (http/<key>.json): the one wiki fetch left
+    (the tables are in the data package, which is in the planner's wheel). Prices change daily, so they are not
+    packaged data; a page cannot fetch them itself."""
     os.environ["RUNE_ADVISOR_CACHE"] = str(cache / "planner-cache")  # read when rune_advisor.config is imported
     sys.path.insert(0, str(ROOT / "src"))
     from rune_advisor.http import CachedClient
     from rune_advisor.prices import Prices
-    from rune_advisor.sources import adventurers_log, wiki
+    from rune_advisor.sources import wiki
 
     client = CachedClient()
-    counts = {
-        "achievements": len(wiki.fetch_all_achievements(client)),
-        "requirements": len(wiki.fetch_achievement_requirements(client, ironman=False))
-        + len(wiki.fetch_achievement_requirements(client, ironman=True)),
-        "members_only": len(wiki.members_only_achievements(client)),
-        "quests": len(wiki.fetch_all_quests(client)),
-    }
+    shutil.rmtree(client.cache_dir, ignore_errors=True)
+    client.cache_dir.mkdir(parents=True)
     Prices(client)
-    titles = None
-    if quest_player:
-        titles = sorted(adventurers_log.parse_quests(adventurers_log.fetch_quests(client, quest_player)))
-        counts["quest_titles"] = len(titles)
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(client.cache_dir.glob("*.json")):
-            if quest_player and quest_player.lower() in f.read_text()[:2000].lower():
-                continue  # a player's own answer (their quest list): only the titles go out
             z.write(f, f"http/{f.name}")
-        if titles:
-            z.writestr("quest_titles.json", json.dumps(titles))
-    return counts
+    return {"wiki tables fetched": wiki.tables_fetched(), "price files": len(list(client.cache_dir.glob("*.json")))}
 
 
 def site(out: Path, api: str | None) -> None:
@@ -177,7 +164,6 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", type=Path, default=ROOT / "dist" / "web")
     ap.add_argument("--api", help="the API the pages talk to (default: the one the site names)")
-    ap.add_argument("--quest-list-from", metavar="NAME", help="a player whose Adventurer's Log supplies today's quest titles")
     ap.add_argument("--assets-url", default="/planner-assets/",
                     help="where planner-assets/ is served (default: the same site); a CDN for the live site")
     args = ap.parse_args()
@@ -188,15 +174,14 @@ def main() -> int:
     planner, assets = out / "planner", out / "planner-assets"
     wheels = runtime(cache, planner, assets)
     wheels.append(planner_wheel(cache / "planner-wheel"))
-    counts = wiki_cache(cache, cache / "wiki-cache.zip", args.quest_list_from)
+    counts = price_cache(cache, cache / "price-cache.zip")
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     (planner / "manifest.json").write_text(json.dumps({
         "version": commit, "pyodide": f"pyodide/{PYODIDE}/", "assets": args.assets_url,
-        "wheels": [hashed(w, assets) for w in wheels], "cache": hashed(cache / "wiki-cache.zip", assets),
-        "tables_fetched": datetime.date.today().isoformat()}, indent=1))
+        "wheels": [hashed(w, assets) for w in wheels], "cache": hashed(cache / "price-cache.zip", assets)}, indent=1))
     size = lambda p: sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
     print(f"built {out}")
-    print(f"  wiki tables: {counts}")
+    print(f"  data: {counts}")
     print(f"  planner (our servers): {size(planner) / 1e6:.1f} MB")
     print(f"  planner-assets ({args.assets_url}): {size(assets) / 1e6:.1f} MB")
     return 0

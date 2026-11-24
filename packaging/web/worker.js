@@ -40,7 +40,7 @@ async function init(cfg) {
   note("loading the planner");
   const wheels = await Promise.all(manifest.wheels.map((w) => bytes(base, w)));
   for (const wheel of wheels) py.unpackArchive(wheel, "wheel", { extractDir: site });
-  // The wiki's tables and the quest list, fetched when the site was built: the planner's HTTP cache.
+  // GE prices, fetched when the site was built: the planner's HTTP cache. (The wiki's tables are in the wheel.)
   py.FS.mkdirTree(`${HOME}/.cache/rune-advisor`);
   py.unpackArchive(await bytes(base, manifest.cache), "zip", { extractDir: `${HOME}/.cache/rune-advisor` });
   // The two files the desktop planner reads, as the page keeps them.
@@ -51,8 +51,8 @@ async function init(cfg) {
   env.set("RUNE_ADVISOR_API_URL", cfg.api);
   env.set("RUNE_ADVISOR_API_TOKEN", cfg.token);
   web = py.pyimport("rune_advisor.app.web");
-  return { seconds: (performance.now() - started) / 1000, version: manifest.version, tables: manifest.tables_fetched,
-           meta: JSON.parse(web.meta()) };
+  const meta = JSON.parse(web.meta());
+  return { seconds: (performance.now() - started) / 1000, version: manifest.version, tables: meta.data.tables_fetched, meta };
 }
 
 function run(id, msg) {

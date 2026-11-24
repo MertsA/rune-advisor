@@ -6,8 +6,10 @@ the worker, which calls `run` here. What differs from the desktop planner:
   * Player data comes only from the export API (the plugin's posts), read with the token the account page
     handed over. A page cannot ask Jagex's hiscores or Adventurer's Log (no cross-origin access), and with a
     plugin export the planner does not need them.
-  * The wiki's tables (achievements, their requirements, quests, prices) are not fetched: the site build puts
-    them in the HTTP cache (`CachedClient.keep_stale`), where the planner's usual calls find them.
+  * The wiki's tables (achievements, their requirements, quests, the list of quests that exist) come from the
+    data package (data/wiki_tables/, bundled in the planner's wheel), as they do for the desktop planner. GE
+    prices are not in the package (they change daily): the site build puts a copy in the HTTP cache
+    (`CachedClient.keep_stale`), where the planner's usual calls find them.
   * Settings and overrides are the two TOML files the desktop planner reads, written into the worker's
     file system by the page before this module is imported.
 
@@ -25,17 +27,11 @@ from .. import config
 from ..http import CachedClient
 from .planner import Planner, normalise
 
-# The quests that exist today (the Adventurer's Log's titles, the same for every player), written by the site
-# build. Without it retired quest configs can show as unfinished (player.player_from_snapshot).
-QUEST_TITLES = config.CACHE_DIR / "quest_titles.json"
-
-
 def _quest_titles() -> set[str] | None:
-    try:
-        titles = json.loads(QUEST_TITLES.read_text())
-    except (OSError, ValueError):
-        return None
-    return set(titles) if isinstance(titles, list) and titles else None
+    """The quests that exist (the data package's list): without it retired quest configs can show as unfinished
+    (player.player_from_snapshot)."""
+    from ..sources import wiki
+    return wiki.packaged_quest_titles()
 
 
 def _settings(group: list[str], player_name: str) -> config.Settings:
@@ -99,7 +95,11 @@ def meta() -> str:
     from ..recommend.guide import MOODS
     from ..recommend.tracks import ALL_TRACKS
 
-    return json.dumps({"tracks": {n: t.description for n, t in ALL_TRACKS.items()}, "moods": list(MOODS)})
+    from .. import datapkg
+    from ..sources import wiki
+
+    return json.dumps({"tracks": {n: t.description for n, t in ALL_TRACKS.items()}, "moods": list(MOODS),
+                       "data": {"version": datapkg.version(), "tables_fetched": wiki.tables_fetched()}})
 
 
 def forget() -> None:

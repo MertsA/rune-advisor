@@ -30,11 +30,13 @@ OVERRIDES_FILE = config.user_file("overrides.toml")
 
 
 def current_quest_titles(client: CachedClient, name: str) -> set[str] | None:
-    """Titles of quests that exist today, from the Adventurer's Log (the list is the same for every player)."""
+    """Titles of quests that exist today, from the Adventurer's Log (the list is the same for every player), else
+    the list the data package was built with."""
     try:
         return set(adventurers_log.parse_quests(adventurers_log.fetch_quests(client, name)))
     except (httpx.HTTPError, KeyError):
-        return None
+        from .sources import wiki
+        return wiki.packaged_quest_titles()
 
 
 def archived_snapshots(name: str, archive_dir: Path = ARCHIVE_DIR) -> list[tuple[str, Path]]:

@@ -13,9 +13,43 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .. import datapkg
 from ..http import CachedClient
 
 API = "https://runescape.wiki/api.php"
+
+# The whole tables the planner reads, shipped in the data package as data/wiki_tables/<name>.json
+# (scripts/build_wiki_tables.py). When the package has a table it is used as is and the wiki is not asked: the
+# web planner cannot reach the wiki, and a data release is what refreshes them.
+TABLES = {
+    "quests": ("quest", ["page_name", "official_length", "requirements", "json"]),
+    "achievements": ("achievement", ["page_name", "name", "id", "runescore", "maincategory", "subcategory",
+                                     "difficulty", "json"]),
+    "achievement_requirements": ("achievement_requirement", ["page_name", "regular", "ironman"]),
+}
+
+
+def _rows(client: CachedClient, name: str) -> list[dict[str, Any]]:
+    """A whole table: the data package's copy, else one download from the wiki."""
+    if datapkg.exists(f"wiki_tables/{name}.json"):
+        return datapkg.load_json(f"wiki_tables/{name}.json")
+    table, fields = TABLES[name]
+    return bucket_all(client, table, fields)
+
+
+def tables_fetched() -> str | None:
+    """The day the packaged tables were fetched from the wiki, None when the package has none."""
+    if not datapkg.exists("wiki_tables/fetched.json"):
+        return None
+    return datapkg.load_json("wiki_tables/fetched.json").get("fetched")
+
+
+def packaged_quest_titles() -> set[str] | None:
+    """The quests that existed when the package was built (from an Adventurer's Log; the same for everyone)."""
+    if not datapkg.exists("wiki_tables/quest_titles.json"):
+        return None
+    titles = datapkg.load_json("wiki_tables/quest_titles.json")
+    return set(titles) if isinstance(titles, list) and titles else None
 
 _SKILLREQ = re.compile(r'data-skill="(?P<skill>[^"]+)" data-level="(?P<level>\d+)"')
 _LINK = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
@@ -96,18 +130,30 @@ def parse_quest_row(row: dict[str, Any]) -> QuestInfo:
 
 
 def fetch_quest(client: CachedClient, title: str) -> QuestInfo | None:
-    rows = bucket(client, "quest", ["page_name", "official_length", "requirements", "json"], {"page_name": title}, limit=1)
+    if datapkg.exists("wiki_tables/quests.json"):
+        return _packaged_quests().get(title)
+    rows = bucket(client, "quest", TABLES["quests"][1], {"page_name": title}, limit=1)
     return parse_quest_row(rows[0]) if rows else None
 
 
+def _packaged_quests() -> dict[str, QuestInfo]:
+    global _quests
+    if _quests is None:
+        _quests = {r["page_name"]: parse_quest_row(r) for r in datapkg.load_json("wiki_tables/quests.json")}
+    return _quests
+
+
+_quests: dict[str, QuestInfo] | None = None
+
+
 def fetch_all_quests(client: CachedClient) -> dict[str, QuestInfo]:
-    rows = bucket_all(client, "quest", ["page_name", "official_length", "requirements", "json"])
-    return {r["page_name"]: parse_quest_row(r) for r in rows}
+    if datapkg.exists("wiki_tables/quests.json"):
+        return dict(_packaged_quests())
+    return {r["page_name"]: parse_quest_row(r) for r in _rows(client, "quests")}
 
 
 def fetch_all_achievements(client: CachedClient) -> list[dict[str, Any]]:
-    return bucket_all(client, "achievement", ["page_name", "name", "id", "runescore", "maincategory",
-                                              "subcategory", "difficulty", "json"])
+    return _rows(client, "achievements")
 
 
 def members_only_achievements(client: CachedClient) -> set[str]:
@@ -131,7 +177,7 @@ def fetch_achievement_requirements(client: CachedClient, ironman: bool = False) 
     {"type": "quest"|"achievement", "name", "partial"} or {"type": "intangible", "content"}.
     Ironman accounts use the "ironman" variant when the wiki has one.
     """
-    rows = bucket_all(client, "achievement_requirement", ["page_name", "regular", "ironman"])
+    rows = _rows(client, "achievement_requirements")
     out = {}
     for row in rows:
         raw = (row.get("ironman") if ironman else None) or row.get("regular")

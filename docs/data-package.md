@@ -111,6 +111,7 @@ Most need network access to the wiki (CC BY-NC-SA). Order matters where one read
 | `teleports.json` | `build_teleports.py` | |
 | `alch_values.json` | `build_alch_values.py` | |
 | `item_names.json` | `build_item_names.py` (`--lookup` names unknown ids from the wiki) | |
+| `wiki_tables/*.json` | `build_wiki_tables.py --quest-list-from NAME` | whole Bucket tables (quests, achievements, achievement requirements) as the wiki returns them, plus the list of quests that exist (any player's Adventurer's Log; only titles kept) and `fetched.json`. While the package has them the planner reads these and does not ask the wiki (since 2026-11-24); the web planner has no other way to get them. Refresh before each release |
 | `game_configs/*.json.gz` | `import_game_configs.py` from the dev plugin's config dump | needs the beta client; re-run after game updates |
 | `lamp_xp.json`, `elite_xp.json`, `skills.json` | one-off wiki extracts, no generator | refresh by hand when the wiki module changes |
 | `conversions.json`, `content_rates.json`, `deathtouched_dart.json`, `dnd_resets.json`, `shop_cadence.json`, `shops_extra.json`, `weekly_claims.json`, `xp_rates.toml`, `xp_resources.toml` | hand-written | from the wiki pages named in each file |

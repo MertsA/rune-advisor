@@ -275,7 +275,8 @@ def test_web_run_answers_in_json(ctx, monkeypatch):
     assert json.loads(web.run("profile", json.dumps({"player": "Boom"}), False, lambda *a: None)) == {
         "error": "no plugin export for Boom"}
     assert "player must be" in json.loads(web.run("profile", json.dumps({"player": "!"}), False, lambda *a: None))["error"]
-    assert set(json.loads(web.meta())) == {"tracks", "moods"}
+    meta = json.loads(web.meta())
+    assert set(meta) == {"tracks", "moods", "data"} and meta["data"]["tables_fetched"]
 
 
 def test_web_player_comes_from_the_export_api_alone(tmp_path, monkeypatch):
@@ -298,7 +299,7 @@ def test_web_player_comes_from_the_export_api_alone(tmp_path, monkeypatch):
         monkeypatch.setenv("RUNE_ADVISOR_API_TOKEN", read)
         monkeypatch.setattr(api_client, "CACHE_DIR", tmp_path / "api_cache")
         monkeypatch.setattr(api_client, "CONFIGS_DIR", tmp_path / "api_configs")
-        monkeypatch.setattr(web, "QUEST_TITLES", tmp_path / "quest_titles.json")
+        monkeypatch.setattr(web, "_quest_titles", lambda: None)  # a package without the list of quests
         settings = web._settings([], "PlayerOne")
         assert settings.api_tokens == [read] and settings.plugin_db != tmp_path
         settings.plugin_db = tmp_path / "none.db"
@@ -366,3 +367,22 @@ def test_web_planner_needs_no_command_line_libraries():
             "web.web_ctx_factory\nprint(len(web.meta()) > 0)")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert out.returncode == 0 and out.stdout.strip() == "True", out.stderr
+
+
+def test_wiki_tables_come_from_the_data_package_without_the_wiki():
+    """The quest, achievement and requirement tables and the list of quests are packaged data: reading them
+    asks the wiki nothing (the web planner cannot reach it)."""
+    from rune_advisor.http import CachedClient
+    from rune_advisor.sources import wiki
+
+    class NoNetwork(CachedClient):
+        def get_json(self, *a, **k):
+            raise AssertionError("asked the wiki")
+
+    client = NoNetwork()
+    quests = wiki.fetch_all_quests(client)
+    assert len(quests) > 300 and wiki.fetch_quest(client, next(iter(quests))) is not None
+    assert len(wiki.fetch_all_achievements(client)) > 4000
+    normal, iron = wiki.fetch_achievement_requirements(client), wiki.fetch_achievement_requirements(client, ironman=True)
+    assert len(normal) > 2000 and len(iron) >= len(normal) * 0.9 and wiki.members_only_achievements(client)
+    assert len(wiki.packaged_quest_titles()) > 300 and wiki.tables_fetched()
