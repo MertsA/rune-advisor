@@ -61,6 +61,6 @@ def split(token: str) -> tuple[str, bytes | None]:
     return sent, (base64.urlsafe_b64decode(enc + "=" * (-len(enc) % 4)) if enc else None)
 
 
-def blob_aad(token_id: str, epoch: int) -> bytes:
-    """Additional authenticated data of a settings blob: ties the ciphertext to its token and epoch."""
-    return f"rune-advisor/v1/blob/{token_id}/{epoch}".encode("utf-8")
+# Additional authenticated data of every settings blob. The key itself differs per token and epoch, so a blob only
+# opens with the token it was written for; a planner token need not carry its id or epoch.
+BLOB_AAD = b"rune-advisor/v1/blob"

@@ -3359,6 +3359,39 @@ def test_token_keys_hkdf_and_split():
     assert token_keys.bearer(key, tid, 1) != sent and token_keys.split(sent) == (sent, None)
 
 
+def test_token_keys_javascript_matches_python(tmp_path):
+    """site/assets/tokenkeys.js (account page, planner page) derives the same tokens as token_keys.py, and a
+    blob it seals opens again only with its own token's key."""
+    import shutil
+    import subprocess
+
+    from rune_advisor import token_keys
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    script = tmp_path / "check.mjs"
+    script.write_text("""
+import { readFileSync } from "node:fs";
+new Function(readFileSync(process.argv[2], "utf8"))();
+const K = globalThis.RATokenKeys;
+const key = "raa_" + "k".repeat(43), id = "0123456789abcdef0123456789abcdef";
+const held = await K.plannerToken(key, id, 3);
+const sealed = await K.sealBlob(K.split(held).enc, { format: 1, settings: { "overrides.toml": "x = 1" } });
+const back = await K.openBlob(K.split(held).enc, sealed);
+let other = "opened";
+try { await K.openBlob(await K.settingsKey(key, id, 4), sealed); } catch (e) { other = "refused"; }
+console.log(JSON.stringify({ bearer: await K.bearer(key, id, 3), held, back, other, id: K.randomId() }));
+""")
+    out = json.loads(subprocess.run([node, str(script), str(Path(__file__).parent.parent / "site" / "assets" / "tokenkeys.js")],
+                                    capture_output=True, text=True, check=True).stdout)
+    key, tid = "raa_" + "k" * 43, "0123456789abcdef0123456789abcdef"
+    assert out["bearer"] == token_keys.bearer(key, tid, 3)
+    assert out["held"] == token_keys.planner_token(key, tid, 3)
+    assert out["back"] == {"format": 1, "settings": {"overrides.toml": "x = 1"}} and out["other"] == "refused"
+    assert len(out["id"]) == 32 and int(out["id"], 16) >= 0
+
+
 def test_export_api_derived_tokens_rotation_and_blobs(tmp_path):
     """Tokens the account page derives from the key, settings blobs per token, rotation by the operator and by the page."""
     import base64

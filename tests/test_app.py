@@ -352,5 +352,5 @@ def test_web_frontend_keeps_the_sites_rules():
     page = (web_dir / "planner.js").read_text()
     assert 'sessionStorage.getItem(TOKEN)' in page and "raa_" not in page
     account = (web_dir.parent.parent / "site" / "assets" / "account.js").read_text()
-    assert 'sessionStorage.setItem(PLANNER_TOKEN, made.body.token)' in account
+    assert 'sessionStorage.setItem(PLANNER_TOKEN, await K.plannerToken(key, web.id, web.epoch))' in account
     assert account.count("sessionStorage.setItem") == 1 and "localStorage.setItem" not in account

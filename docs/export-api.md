@@ -107,7 +107,7 @@ again and the server holds nothing it could derive from (`src/rune_advisor/token
 
 Each `read` token may keep one blob of at most `max_blob_bytes` (64 KiB): its planner's settings, encrypted by
 the planner with the token's `enc` key (AES-256-GCM, a fresh 12-byte nonce first, additional data
-`rune-advisor/v1/blob/<id>/<epoch>`). The server stores bytes it cannot read.
+`rune-advisor/v1/blob` (the key is already per token and epoch)). The server stores bytes it cannot read.
 
 - `GET /v1/blob` -> `{version, data: base64}`; 404 when there is none.
 - `POST /v1/blob {version, data}` writes when `version` is the one held (0: none yet) and answers the new one;

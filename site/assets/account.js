@@ -3,9 +3,14 @@
 // Rules this file keeps:
 // - The key lives in one variable (`key`) for as long as the page is open. It is never written to
 //   localStorage, sessionStorage, a cookie, the address bar or the console.
-// - "Open the web planner" (shown only where the page names a planner, <meta name="planner">) makes a read
-//   token with the key and leaves that token, never the key, in sessionStorage for the planner page: it is
-//   gone when the tab closes, so the next visit needs the key again.
+// - Tokens made here are derived from the key (tokenkeys.js): the page picks an id, derives the value and sends
+//   it to be registered, so it can show any of them again later. A read token's copy for a planner carries,
+//   after a dot, the key to that planner's settings blob; the part after the dot is never sent anywhere.
+// - "Open the web planner" (shown only where the page names a planner, <meta name="planner">) derives the
+//   account's web planner token and leaves it, never the key, in sessionStorage for the planner page: it is
+//   gone when the tab closes, so the next visit needs the key again. Every visit derives the same token.
+// - A token we retired after a leak (pending) gets its next value here at the next sign-in, and its settings
+//   blob is re-encrypted for it: only this page, holding the key, can do either.
 // - Keys and tokens travel only in the Authorization header, to the one API host named in the page's
 //   <meta name="api-base">. Nothing else is contacted.
 // - Text from the API is put on the page with textContent, never as HTML.
@@ -16,18 +21,21 @@
   const API = document.querySelector('meta[name="api-base"]').content.replace(/\/+$/, "");
   const $ = (id) => document.getElementById(id);
 
+  const K = window.RATokenKeys;
   let key = null; // the account key, in memory only
 
   // --- talking to the API ---------------------------------------------------------------------------------
 
   // One request. Resolves to {status, body}; network failures resolve to status 0 with a readable reason.
+  // `useKey`: true (default) sends the account key, false nothing, a string that bearer value instead.
   async function api(method, path, body, useKey, player, tokenId) {
     const headers = {};
     // So does a token's id: nothing that says whose request it is goes in the address.
     if (tokenId) headers["X-Token-Id"] = tokenId;
     // A character's name goes in a header, never in the address, so web server logs do not record it.
     if (player) headers["X-Player"] = encodeURIComponent(player);
-    if (useKey !== false && key) headers["Authorization"] = "Bearer " + key;
+    if (typeof useKey === "string") headers["Authorization"] = "Bearer " + useKey;
+    else if (useKey !== false && key) headers["Authorization"] = "Bearer " + key;
     if (body !== undefined) headers["Content-Type"] = "application/json";
     try {
       const response = await fetch(API + path, {
@@ -136,8 +144,12 @@
   async function loadAccount() {
     const account = await api("GET", "/v1/account");
     if (account.status !== 200) return account;
-    const tokens = await api("GET", "/v1/tokens");
+    let tokens = await api("GET", "/v1/tokens");
     if (tokens.status !== 200) return tokens;
+    if (await finishRotations(tokens.body.tokens)) {
+      tokens = await api("GET", "/v1/tokens");
+      if (tokens.status !== 200) return tokens;
+    }
 
     const a = account.body;
     const facts = $("facts");
@@ -167,7 +179,7 @@
     body.replaceChildren();
     for (const t of tokens.body.tokens) {
       const row = body.insertRow();
-      cell(row, t.label || "(no label)");
+      cell(row, (t.label || "(no label)") + (t.kind === "web" ? " (this site's planner)" : ""));
       cell(row, t.scopes.join(", "));
       // "May read": which characters a read token is limited to. A plugin's token reads nothing.
       cell(row, t.characters ? "only " + t.characters.join(", ")
@@ -176,10 +188,23 @@
       // an unused or orphaned token can be told from the one in use before it is revoked.
       const posted = (t.posted || []).map((p) => p.player + " (" + p.last_post + ")").join(", ");
       cell(row, posted || (t.scopes.includes("submit") ? "nothing yet" : ""));
-      cell(row, t.prefix + "...");
+      cell(row, t.pending ? "being replaced" : t.prefix + "...");
       cell(row, t.created);
       cell(row, t.last_used || "never");
       const actions = cell(row, "");
+      if (t.derived && !t.pending) {
+        // Derived from the key, so it can be shown again, or replaced by a new value (the old one stops working).
+        const reveal = document.createElement("button");
+        reveal.type = "button";
+        reveal.textContent = "Show";
+        reveal.addEventListener("click", () => showToken(t, "Here it is again."));
+        actions.appendChild(reveal);
+        const renew = document.createElement("button");
+        renew.type = "button";
+        renew.textContent = "Replace";
+        renew.addEventListener("click", () => replaceToken(t));
+        actions.appendChild(renew);
+      }
       const button = document.createElement("button");
       button.type = "button";
       button.className = "danger";
@@ -261,7 +286,8 @@
   }
 
   async function openAccount(candidate) {
-    key = candidate;
+    // A planner token pasted here: only its part before the dot is a credential.
+    key = candidate.startsWith("rat_") ? K.split(candidate).bearer : candidate;
     status("signin-status", "Opening...");
     show("token-view", false);
     const result = await loadAccount();
@@ -335,7 +361,8 @@
   $("token-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const scope = document.querySelector('input[name="scope"]:checked').value;
-    const request = { label: $("token-label").value.trim(), scopes: [scope] };
+    const id = K.randomId();
+    const request = { id: id, token: await K.bearer(key, id, 0), label: $("token-label").value.trim(), scopes: [scope] };
     const characters = $("token-characters").value.split(",").map((c) => c.trim()).filter(Boolean);
     if (scope === "read" && characters.length) request.characters = characters;
     show("new-token", false);
@@ -345,37 +372,118 @@
       status("token-status", "Could not make a token: " + reason(result), "error");
       return;
     }
-    $("new-token-value").value = result.body.token;
-    show("new-token", true);
     $("token-label").value = "";
     $("token-characters").value = "";
-    status("token-status", scope === "submit" ? "Made. Paste it into the plugin's settings." : "Made. Give it to the planner.", "ok");
+    await showToken({ id: id, epoch: 0, scopes: [scope] },
+      scope === "submit" ? "Made. Paste it into the plugin's settings." : "Made. Give it to the planner.");
     await loadAccount();
   });
 
+  // --- derived tokens -------------------------------------------------------------------------------------
+
+  // What a token's user pastes: the plugin's bearer value, or for a read token the planner token (with the
+  // settings key after the dot).
+  async function tokenValue(t) {
+    return t.scopes.includes("read") ? K.plannerToken(key, t.id, t.epoch) : K.bearer(key, t.id, t.epoch);
+  }
+
+  async function showToken(t, message) {
+    $("new-token-value").value = await tokenValue(t);
+    show("new-token", true);
+    status("token-status", message, "ok");
+  }
+
+  // Re-encrypt a token's settings blob for `epoch` after its value changed. Only this page can: the old
+  // epoch's settings key comes from the account key. False when there was a blob and it could not be carried.
+  async function carryBlob(t, epoch) {
+    if (!t.blob || t.blob.epoch === epoch) return true;
+    const old = await api("GET", "/v1/tokens/blob", undefined, true, null, t.id);
+    if (old.status === 404) return true;
+    if (old.status !== 200) return false;
+    let settings;
+    try {
+      settings = await K.openBlob(await K.settingsKey(key, t.id, old.body.epoch), old.body.data);
+    } catch (e) {
+      return false; // not readable with this key: leave it, the planner starts from defaults
+    }
+    const data = await K.sealBlob(await K.settingsKey(key, t.id, epoch), settings);
+    const wrote = await api("POST", "/v1/blob", { version: old.body.version, data: data }, await K.bearer(key, t.id, epoch));
+    return wrote.status === 200;
+  }
+
+  // Tokens we retired after a leak wait as "pending" until this page gives them their next value; blobs left at
+  // an older epoch are re-encrypted. True when anything changed (the caller lists the tokens again).
+  async function finishRotations(tokens) {
+    let changed = false;
+    const replaced = [];
+    for (const t of tokens) {
+      if (!t.derived) continue;
+      if (t.pending) {
+        const done = await api("POST", "/v1/tokens/rotate", { epoch: t.epoch, token: await K.bearer(key, t.id, t.epoch) },
+          true, null, t.id);
+        if (done.status !== 200) continue;
+        changed = true;
+        if (t.kind !== "web") replaced.push(t.label || t.id.slice(0, 6));
+      }
+      if (t.blob && t.blob.epoch !== t.epoch && (await carryBlob(t, t.epoch))) changed = true;
+    }
+    if (replaced.length) {
+      status("token-status", "For safety we replaced the value of: " + replaced.join(", ") +
+        ". Use Show to copy the new value into whatever used the old one.", "ok");
+    }
+    return changed;
+  }
+
+  async function replaceToken(t) {
+    const name = t.label || t.prefix + "...";
+    if (!window.confirm('Replace the token "' + name + '"? The old value stops working at once; its settings carry over.')) return;
+    const epoch = t.epoch + 1;
+    const result = await api("POST", "/v1/tokens/rotate", { epoch: epoch, token: await K.bearer(key, t.id, epoch) },
+      true, null, t.id);
+    if (result.status !== 200) {
+      status("token-status", "Could not replace it: " + reason(result), "error");
+      return;
+    }
+    const carried = await carryBlob(t, epoch);
+    await showToken({ ...t, epoch: epoch }, carried ? "Replaced. Copy the new value into whatever used the old one."
+      : "Replaced, but its saved settings could not be carried over.");
+    await loadAccount();
+  }
+
   // --- the web planner ------------------------------------------------------------------------------------
 
-  // The planner page (same site) reads characters with a read token of its own. It gets one here, so using
-  // it takes the account key: the key opens the account, this makes a fresh read token labelled
-  // PLANNER_LABEL, revokes the ones made the same way before (one planner tab per account), and hands the
-  // token to the planner through sessionStorage, which lasts as long as this tab.
+  // The planner page (same site) reads characters with the account's web planner token (kind "web"). It gets it
+  // here, so using it takes the account key: the key opens the account, this derives the token (making it the
+  // first time) and hands it to the planner through sessionStorage, which lasts as long as this tab. Every tab
+  // and browser derives the same token, so they share its settings and none of them signs another out.
   const PLANNER = (document.querySelector('meta[name="planner"]') || {}).content || "";
   const PLANNER_LABEL = "Web planner";
   const PLANNER_TOKEN = "ra-planner-token"; // the sessionStorage name packaging/web/planner.js reads
 
   async function openPlanner() {
-    status("planner-status", "Making a token for the planner...");
+    status("planner-status", "Opening the planner...");
     const tokens = await api("GET", "/v1/tokens");
     if (tokens.status !== 200) return status("planner-status", "Could not list tokens: " + reason(tokens), "error");
+    let web = null;
     for (const t of tokens.body.tokens) {
-      if (t.label === PLANNER_LABEL && t.scopes.length === 1 && t.scopes[0] === "read") {
+      if (t.kind === "web") web = t;
+      // Made by this page before tokens were derived: one per visit, held by no one once its tab closed.
+      else if (!t.derived && t.label === PLANNER_LABEL && t.scopes.length === 1 && t.scopes[0] === "read") {
         await api("DELETE", "/v1/tokens", undefined, true, null, t.id);
       }
     }
-    const made = await api("POST", "/v1/tokens", { label: PLANNER_LABEL, scopes: ["read"] });
-    if (made.status !== 201) return status("planner-status", "Could not make a token: " + reason(made), "error");
+    if (web && web.pending) {
+      return status("planner-status", "The planner's token is being replaced; reopen the account and try again.", "error");
+    }
+    if (!web) {
+      const id = K.randomId();
+      const made = await api("POST", "/v1/tokens",
+        { id: id, token: await K.bearer(key, id, 0), label: PLANNER_LABEL, scopes: ["read"], kind: "web" });
+      if (made.status !== 201) return status("planner-status", "Could not make a token: " + reason(made), "error");
+      web = { id: id, epoch: 0, scopes: ["read"] };
+    }
     try {
-      sessionStorage.setItem(PLANNER_TOKEN, made.body.token);
+      sessionStorage.setItem(PLANNER_TOKEN, await K.plannerToken(key, web.id, web.epoch));
     } catch (e) {
       return status("planner-status", "This browser refuses session storage, which the planner needs.", "error");
     }
@@ -422,7 +530,8 @@
   });
 
   async function revokeToken(id, name) {
-    if (!window.confirm('Revoke the token "' + name + '"? Whatever uses it stops working at once.')) return;
+    if (!window.confirm('Revoke the token "' + name + '"? Whatever uses it stops working at once, and settings ' +
+      "saved with it are deleted.")) return;
     const result = await api("DELETE", "/v1/tokens", undefined, true, null, id);
     if (result.status !== 200) {
       status("token-status", "Could not revoke: " + reason(result), "error");
