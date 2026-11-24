@@ -69,23 +69,18 @@ def web_player(player_name: str, settings: config.Settings, plugin_only: bool = 
 
 def web_ctx_factory(player_name: str, flags: dict, group: list[str]):
     """`cli._ctx` for the web."""
-    from .. import cli
+    from .. import planning
     from ..sources import wiki
 
     settings = _settings(group, player_name)
-    if settings.coins_per_hour:
-        from ..recommend import gathering
-        gathering.COINS_PER_HOUR = float(settings.coins_per_hour)
-    if settings.play_hours_per_day:
-        from ..recommend import gathering
-        gathering.PLAY_HOURS_PER_DAY = float(settings.play_hours_per_day)
+    planning.apply_rates(settings)
     members = False if flags.get("f2p") else settings.player(player_name).members
     if members is None:
         members = settings.members
     p = web_player(player_name, settings, bool(flags.get("plugin_only")))
     client = CachedClient()
     quests = wiki.fetch_all_quests(client)  # one prefetched table in place of a request per quest
-    return cli.context_for(p, settings, client, members, quest_info=quests.get)
+    return planning.context_for(p, settings, client, members, quest_info=quests.get)
 
 
 _planner: Planner | None = None

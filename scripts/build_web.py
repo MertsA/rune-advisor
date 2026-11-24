@@ -52,16 +52,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PYODIDE = "314.0.8"  # Python 3.14
 PYODIDE_SHA256 = "9a52704e0ae5b07aaacb8e4fed9f1658e8024694a078695ea45ac79dee4cefcb"  # the npm tarball
 PYODIDE_FILES = ["pyodide.js", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip", "pyodide-lock.json"]
-# Pure-Python packages taken from the Pyodide distribution (its httpx talks through the browser's fetch).
-PYODIDE_PACKAGES = ["httpx", "click", "rich", "typing-extensions"]
-# The rest of what `rune_advisor.cli` imports (the web planner builds its Context there), from PyPI.
-PYPI_WHEELS = {
-    "typer-0.29.1-py3-none-any.whl": "00dbc549c13428bec1be55fe1f4d0fb8c6637a310e4f178ef14abe9534ee7b58",
-    "shellingham-1.5.4-py2.py3-none-any.whl": "7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686",
-    "annotated_doc-0.0.6-py3-none-any.whl": "361ca0950cc7082f53fa69e9328409f40a62c61e57e0a47e1825a08078a58a53",
-    "markdown_it_py-4.3.0-py3-none-any.whl": "7aa1511a46c39138de78d9eba92ce47e63124d8003fc98b3a351909e04239efa",
-    "mdurl-0.1.2-py3-none-any.whl": "84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8",
-}
+# Pure-Python packages taken from the Pyodide distribution (its httpx talks through the browser's fetch). The
+# command line's libraries (typer, rich, click) are not shipped: the web planner builds its Context in
+# rune_advisor.planning, which does not import them (tests/test_app.py checks).
+PYODIDE_PACKAGES = ["httpx", "typing-extensions"]
+# Wheels from PyPI the planner imports and Pyodide lacks (none today), checked against their SHA-256.
+PYPI_WHEELS: dict[str, str] = {}
 USER_AGENT = "rune-advisor-build"
 
 

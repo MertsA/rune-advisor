@@ -354,3 +354,15 @@ def test_web_frontend_keeps_the_sites_rules():
     account = (web_dir.parent.parent / "site" / "assets" / "account.js").read_text()
     assert 'sessionStorage.setItem(PLANNER_TOKEN, await K.plannerToken(key, web.id, web.epoch))' in account
     assert account.count("sessionStorage.setItem") == 1 and "localStorage.setItem" not in account
+
+
+def test_web_planner_needs_no_command_line_libraries():
+    """The web build ships neither typer nor rich nor click: the planner's web path must not import them."""
+    import subprocess
+    import sys
+
+    code = ("import sys\nfor m in ('typer', 'rich', 'click'): sys.modules[m] = None\n"
+            "import rune_advisor.app.web as web, rune_advisor.planning\n"
+            "web.web_ctx_factory\nprint(len(web.meta()) > 0)")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert out.returncode == 0 and out.stdout.strip() == "True", out.stderr
