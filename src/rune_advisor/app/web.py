@@ -56,7 +56,8 @@ def web_player(player_name: str, settings: config.Settings, plugin_only: bool = 
                            "plugin, give it a token from the account page and log in to the game once")
     p = players.player_from_snapshot(player_name, snap, _quest_titles())
     # Ironman status is on the hiscores, which a page cannot read: it is a setting here.
-    p.ironman = settings.ironman or settings.in_group(player_name)
+    # Ironman status: the export's own flags, else settings (the hiscores, which a page cannot read, aren't asked).
+    players.apply_account_settings(p, settings)
     if not plugin_only and players.OVERRIDES_FILE.exists():
         players.apply_overrides(p, tomllib.loads(players.OVERRIDES_FILE.read_text()))
         players.reconcile_journal_qp(p)

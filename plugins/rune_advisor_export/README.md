@@ -18,7 +18,8 @@ achievements, levels, gear) and how long it is likely to take for your account, 
 full state once per login and after that only what changed, at most once every few seconds.
 
 **What is sent.**
-- Your character's display name, experience in each skill, and whether you are on a members' world.
+- Your character's display name, experience in each skill, whether you are on a members' world, and its
+  account mode (Ironman, Hardcore Ironman, Group Ironman).
 - Quest and achievement progress: the player variables the game's quests and achievements test.
 - Your own item storage: bank, backpack, worn equipment, money and currency pouches, and the skilling
   containers (ore box, wood box, herb bag, material storage and the like).

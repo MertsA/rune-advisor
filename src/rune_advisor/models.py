@@ -74,7 +74,9 @@ class PlayerState:
     # Item name -> count per exported inventory ("BANK", "INV" backpack, "WORN", "METAL_BANK").
     inventories: dict[str, dict[str, int]] = field(default_factory=dict)
     runescore: int | None = None
-    ironman: bool = False  # on the ironman hiscores; prefer ironman achievement requirements
+    ironman: bool = False  # on the ironman hiscores, or in a group; prefer ironman achievement requirements
+    group_ironman: bool = False  # a Group Ironman member (the export, else `group` in rune_advisor.toml); implies `ironman`
+    hardcore: bool = False  # a Hardcore Ironman, or in a Hardcore Group Ironman group (from the export only)
     members: bool = True   # False plans for free-to-play: no members quests/achievements, F2P skill caps
     members_world: bool | None = None  # world type from the plugin snapshot (None if unknown)
     # The in-game quest journal's QP total (VarPlayer "QP"), when the plugin exported it.
@@ -124,6 +126,14 @@ class PlayerState:
     assumed_traits: set[str] = field(default_factory=set)
     fetched_at: datetime | None = None
     notes: list[str] = field(default_factory=list)
+
+    @property
+    def account(self) -> str:
+        """The account mode: "Group ironman", "Ironman" or "Regular", "Hardcore" in front where it applies."""
+        mode = "group ironman" if self.group_ironman else "ironman" if self.ironman else None
+        if mode is None:
+            return "Regular"
+        return f"Hardcore {mode}" if self.hardcore else mode.capitalize()
 
     @property
     def bank(self) -> dict[str, int]:

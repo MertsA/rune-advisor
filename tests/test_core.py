@@ -875,6 +875,34 @@ def test_penguin_points_from_var():
     assert penguin_points_from_var({"PENG_SPY_POINTS": 0, "PENG_SPY_PERM1": 0x47B80186}) == 0
 
 
+def test_account_mode_from_export():
+    from rune_advisor.config import Settings
+    from rune_advisor.player import account_from_vars, apply_account_settings
+    assert account_from_vars({}) is None  # a plugin before 0.5.0
+    assert account_from_vars({"IRONMAN_ENABLED": 0, "HARDCORE_ENABLED": 0, "GROUP_IRONMAN_ENABLED": 0,
+                              "GROUP_HARDCORE_ENABLED": 0}) == (False, False, False)
+    assert account_from_vars({"IRONMAN_ENABLED": 1, "HARDCORE_ENABLED": 1}) == (True, False, True)
+    # A solo ironman turned group ironman may keep its solo bit: the group flag decides, hardcore is the group's.
+    assert account_from_vars({"IRONMAN_ENABLED": 1, "HARDCORE_ENABLED": 1, "GROUP_IRONMAN_ENABLED": 1,
+                              "GROUP_HARDCORE_ENABLED": 0}) == (True, True, False)
+
+    p = PlayerState(name="PlayerOne")
+    apply_plugin_snapshot(p, {"vars": {"IRONMAN_ENABLED": 0, "GROUP_IRONMAN_ENABLED": 1, "GROUP_HARDCORE_ENABLED": 1}})
+    assert (p.ironman, p.group_ironman, p.hardcore, p.account) == (True, True, True, "Hardcore group ironman")
+    # The export wins over settings; settings fill in only where the export is silent.
+    grouped = Settings(group=["PlayerOne", "PlayerTwo"])
+    regular = PlayerState(name="PlayerOne")
+    apply_plugin_snapshot(regular, {"vars": {"IRONMAN_ENABLED": 0, "GROUP_IRONMAN_ENABLED": 0}})
+    apply_account_settings(regular, grouped)
+    assert regular.account == "Regular" and any("the game says regular" in n for n in regular.notes)
+    old = PlayerState(name="PlayerOne")
+    apply_account_settings(old, grouped)
+    assert old.account == "Group ironman" and old.ironman
+    solo = PlayerState(name="PlayerOne")
+    apply_account_settings(solo, Settings(ironman=True))
+    assert solo.account == "Ironman"
+
+
 def test_bonus_xp_overrides_and_snapshot():
     p = PlayerState(name="PlayerOne")
     apply_overrides(p, {"players": {"playerone": {"bonus_xp": {"Attack": 25_000, "Constitution": 10}, "rested_xp": 900}}})

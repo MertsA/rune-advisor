@@ -16,7 +16,7 @@ from .config import ARCHIVE_DIR, load_settings
 from .cost import CostModel
 from .http import CachedClient
 from .models import QuestStatus
-from .player import current_quest_titles, find_snapshot, load_group, load_player, player_from_snapshot
+from .player import apply_account_settings, current_quest_titles, find_snapshot, load_group, load_player, player_from_snapshot
 from .planning import apply_rates, context_for
 from .recommend import Context, combine, rank
 from .recommend.guide import MOODS
@@ -55,7 +55,7 @@ def _ctx(player_name: str, use_plugin: bool, beta: bool = False, plugin_only: bo
         if snap is None:
             raise typer.Exit(f"no plugin snapshot for {player_name} in {settings.plugin_db}")
         player = player_from_snapshot(player_name, snap, current_quest_titles(client, player_name))
-        player.ironman = settings.ironman or settings.in_group(player_name)
+        apply_account_settings(player, settings)
     else:
         player = load_player(client, player_name, settings, use_plugin=use_plugin)
     return context_for(player, settings, client, members)
@@ -78,7 +78,8 @@ def profile(player: str, plugin: bool = typer.Option(True, help="Merge in-game p
     ctx = _ctx(player, plugin, beta, plugin_only, snapshot, f2p, group)
     p = ctx.player
     journal = f" (journal: {p.journal_quest_points})" if p.journal_quest_points is not None else ""
-    t = Table(title=f"{p.name}  QP {p.quest_points}/{p.max_quest_points}{journal}  RuneScore {p.runescore}")
+    t = Table(title=f"{p.name}  {p.account}, {'members' if p.members else 'free-to-play'}  "
+              f"QP {p.quest_points}/{p.max_quest_points}{journal}  RuneScore {p.runescore}")
     cols = ("Skill", "Level", "XP", "Rank") + (("Bonus XP",) if p.bonus_xp else ())
     for col in cols:
         t.add_column(col, justify="right" if col != "Skill" else "left")

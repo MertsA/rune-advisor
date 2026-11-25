@@ -120,7 +120,7 @@ def session_prep(ctx, picks, hours: float) -> list[str]:
 def profile_view(ctx) -> dict:
     p = ctx.player
     return {
-        "name": p.name, "ironman": p.ironman, "members": p.members,
+        "name": p.name, "ironman": p.ironman, "account": p.account, "members": p.members,
         "quest_points": p.quest_points, "max_quest_points": p.max_quest_points,
         "journal_quest_points": p.journal_quest_points, "runescore": p.runescore,
         "skills": [{"name": s.name, "level": s.level, "xp": s.xp, "rank": s.rank,

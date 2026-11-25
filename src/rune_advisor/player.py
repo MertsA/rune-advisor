@@ -135,8 +135,9 @@ def load_player(client: CachedClient, name: str, settings: Settings, use_plugin:
     hs = hiscores.fetch(client, name)
     p.skills = hiscores.parse_skills(hs)
     p.runescore = hiscores.parse_runescore(hs)
-    # Group ironmen aren't on the (solo) ironman hiscores, but follow ironman requirements.
-    p.ironman = settings.in_group(name) or hiscores.is_on_board(client, name, "ironman")
+    # Until the export says (apply_plugin_snapshot), the ironman hiscores; group ironmen aren't on them (the
+    # board is solo), so `group` in rune_advisor.toml covers those (apply_account_settings, below).
+    p.ironman = hiscores.is_on_board(client, name, "ironman")
 
     try:
         quests = adventurers_log.fetch_quests(client, name)
@@ -158,6 +159,7 @@ def load_player(client: CachedClient, name: str, settings: Settings, use_plugin:
         else:
             p.notes.append(f"no plugin snapshot for {name} (bank and in-game state unknown)")
 
+    apply_account_settings(p, settings)
     if overrides_file.exists():
         apply_overrides(p, tomllib.loads(overrides_file.read_text()))
     reconcile_journal_qp(p)
@@ -259,6 +261,36 @@ BONUS_XP_PREFIX = "BONUSXP_"
 # penguins-spotted count the shop shows; 24-31 are Spy Club unlocks and rework flags.
 PENGUIN_POINTS_VAR = "PENG_SPY_POINTS"
 PENGUIN_POINTS_PACKED_VAR = "PENG_SPY_PERM1"
+
+
+# Account mode: four VarBits of the IRONMAN variable, exported since plugin 0.5.0. A Group Ironman converted from a
+# solo Ironman may keep IRONMAN_ENABLED set, so the group flag decides.
+ACCOUNT_VARS = ("IRONMAN_ENABLED", "HARDCORE_ENABLED", "GROUP_IRONMAN_ENABLED", "GROUP_HARDCORE_ENABLED")
+
+
+def account_from_vars(variables: dict) -> tuple[bool, bool, bool] | None:
+    """(ironman, group ironman, hardcore) from the export's account-mode bits; None when the export lacks them
+    (a plugin before 0.5.0, or the client lacked the variables)."""
+    bits = {name: variables.get(name) for name in ACCOUNT_VARS}
+    if not any(isinstance(v, int) for v in bits.values()):
+        return None
+    on = {name: isinstance(v, int) and v > 0 for name, v in bits.items()}
+    group = on["GROUP_IRONMAN_ENABLED"] or on["GROUP_HARDCORE_ENABLED"]
+    hardcore = on["GROUP_HARDCORE_ENABLED"] if group else on["HARDCORE_ENABLED"]
+    return group or on["IRONMAN_ENABLED"] or on["HARDCORE_ENABLED"], group, hardcore
+
+
+def apply_account_settings(p: PlayerState, settings: Settings) -> None:
+    """Ironman status where the export didn't give it: `group` in rune_advisor.toml makes a Group Ironman and
+    `ironman = true` an Ironman, on top of whatever the caller found (the hiscores). Where the export gave it, the
+    game wins, and a `group` entry it contradicts is noted."""
+    in_group = settings.in_group(p.name)
+    if account_from_vars(p.vars) is None:
+        p.group_ironman = p.group_ironman or in_group
+        p.ironman = p.ironman or settings.ironman or p.group_ironman
+    elif in_group and not p.group_ironman:
+        p.notes.append(f"rune_advisor.toml lists {p.name} in a group, but the game says {p.account.lower()}: "
+                       "planned as the game says (group mates' items are still borrowed)")
 
 
 def penguin_points_from_var(variables: dict) -> int | None:
@@ -550,6 +582,8 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
         p.campfire_tier = tier  # overrides.toml's `campfire` still wins (applied after the snapshot)
     if (points := penguin_points_from_var(p.vars)) is not None:
         p.penguin_points = points  # overrides.toml's `penguin_points` still wins
+    if (mode := account_from_vars(p.vars)) is not None:
+        p.ironman, p.group_ironman, p.hardcore = mode  # the game's own flags beat the hiscores and settings
     # Banked bonus xp from BONUSXP_<SKILL> vars, unless the snapshot's bonusXp table already set it.
     stored_differs = []
     for enum_name, name in plugin_db.SKILLTYPE_TO_NAME.items():

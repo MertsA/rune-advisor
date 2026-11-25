@@ -24,6 +24,11 @@ local M = {}
 
 M.FIELDS = {
     { "QP", 32, "var" },                            -- quest points, as the quest journal totals them
+    -- Account mode: four fields of the IRONMAN variable (the rest of it is cosmetic unlocks and migration flags)
+    { "IRONMAN_ENABLED", 1, "bit" },                -- an Ironman (solo)
+    { "HARDCORE_ENABLED", 1, "bit" },               -- a Hardcore Ironman
+    { "GROUP_IRONMAN_ENABLED", 1, "bit" },          -- a Group Ironman member
+    { "GROUP_HARDCORE_ENABLED", 1, "bit" },         -- in a Hardcore Group Ironman group
     -- Reward currencies and tokens kept in variables
     { "FISHCOMP_FISH_TOKENS", 11, "bit" },          -- Fish Flingers tokens
     { "FISHCOMP_REWARD_TACKLE_BOX_LEVEL", 3, "bit" }, -- Fish Flingers tackle box upgrade level

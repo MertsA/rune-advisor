@@ -3,7 +3,8 @@
 -- Posts your own character's state to the Rune Advisor API (https://api.runeadvisor.com), where the Rune
 -- Advisor planner reads it to recommend what to do next. What is read from the game, all of it your own
 -- character's:
---   - skill experience and whether the world is a members' world
+--   - skill experience, whether the world is a members' world, and the account mode (Ironman, Hardcore,
+--     Group Ironman: four flags, lib/exported_vars.lua)
 --   - the player variables that quests and achievements are made of (which are done, how far along)
 --   - a hand-listed set of other player variables: currencies, storages kept in variables, the collection
 --     log, banked bonus xp and the like (lib/exported_vars.lua lists every one)

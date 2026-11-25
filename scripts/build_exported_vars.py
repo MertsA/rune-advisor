@@ -58,7 +58,17 @@ def entry_line(indent: str, name: str, width: int, kind: str, comment: str | Non
 
 def rebuild(text: str, dump: dict[str, list]) -> str:
     lines = text.split("\n")
-    listed = {m.group(2) for line in lines if (m := ENTRY.match(line))}
+    # Names listed by hand, outside the family blocks: a family leaves them out. (The blocks' own members are
+    # not counted, or a second run would see every member as listed elsewhere and empty its block.)
+    listed, inside = set(), None
+    for line in lines:
+        if inside is not None:
+            if (m := END_FAMILY.match(line)) and m.group(1) == inside:
+                inside = None
+        elif m := FAMILY.match(line):
+            inside = m.group(1)
+        elif m := ENTRY.match(line):
+            listed.add(m.group(2))
     out, family, problems = [], None, []
     for line in lines:
         if family is not None:  # inside a family block: drop the old members, write the new at its end

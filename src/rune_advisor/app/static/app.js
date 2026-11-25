@@ -182,7 +182,7 @@ const RENDER = {
     const bonus = p.skills.some((s) => s.bonus_xp);
     return h("div", {},
       h("div", { class: "summary" }, h("span", {}, `Quest points ${p.quest_points}/${p.max_quest_points}${journal}`),
-        h("span", {}, `RuneScore ${fmtN(p.runescore)}`), h("span", {}, p.ironman ? "Ironman" : "Regular"),
+        h("span", {}, `RuneScore ${fmtN(p.runescore)}`), h("span", {}, p.account || (p.ironman ? "Ironman" : "Regular")),
         h("span", {}, p.members ? "Members" : "Free-to-play"),
         p.rested_xp != null ? h("span", {}, `Rested xp ${fmtN(p.rested_xp)}`) : null),
       h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Skill"), h("th", {}, "Level"), h("th", {}, "XP"), h("th", {}, "Rank"),
