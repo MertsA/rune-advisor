@@ -1147,6 +1147,50 @@ def dnd_cmd(player: str, today: str = typer.Option(None, "--today", help="Plan f
         console.print(f"- {data['removal_note']}")
 
 
+@app.command("dgboss")
+def dgboss_cmd(player: str, plugin: bool = True, beta: bool = BETA_OPT, plugin_only: bool = PLUGIN_ONLY_OPT,
+               snapshot: Path = SNAPSHOT_OPT):
+    """Daemonheim's daily boss pick: every boss worth choosing for a floor, by the open lore and boss achievements it
+    advances for the random floors it replaces, plus the floor-only lore (Bilrach's chronicles, Marmaros and Thok)."""
+    from .daemonheim import floor_only, perk_unlocked, picks, rules
+    from .mechanics.dungeoneering import highest_floor
+    settings = load_settings(beta=beta)
+    if snapshot or plugin_only:
+        snap = json.loads(snapshot.read_text()) if snapshot else find_snapshot(settings, player)
+        if snap is None:
+            raise typer.Exit(f"no plugin snapshot for {player} in {settings.plugin_db}")
+        p = player_from_snapshot(player, snap, current_quest_titles(CachedClient(), player))
+    else:
+        p = load_player(CachedClient(), player, settings, use_plugin=plugin)
+    data = rules()
+    unlocked = perk_unlocked(p)
+    console.print(f"{p.name}: Dungeoneering {p.level('Dungeoneering')}, floors up to {highest_floor(p.level('Dungeoneering'))}; "
+                  + ("boss pick unlocked" if unlocked else "boss pick not unlocked yet" if unlocked is False else "boss pick: the export doesn't say")
+                  + f" ({data['perk']['task_set']})")
+    reachable, later = picks(p)
+    t = Table(title="bosses worth the daily pick, best first (worth = random floors one pick replaces)")
+    for col in ("Boss", "Floor", "Odds without", "Worth", "Advances"):
+        t.add_column(col, justify="right" if col in ("Floor", "Worth") else "left")
+    for x in reachable:
+        what = "; ".join(g.describe() for g in x.gains)
+        if x.floor_lore:
+            what += "; floor also rolls " + ", ".join(x.floor_lore)
+        if x.notes:
+            what += "; " + "; ".join(x.notes)
+        t.add_row(x.boss, str(x.floor), f"1 in {x.rivals}", f"{x.worth:.0f}", what)
+    console.print(t)
+    for x in later:
+        console.print(f"from Dungeoneering {x.min_level}: {x.boss}: {'; '.join(g.describe() for g in x.gains)}")
+    lore = floor_only(p)
+    if lore:
+        console.print("floor-only lore (any boss):")
+        for line in lore:
+            console.print(f"  {line}")
+    for line in data["rules"]:
+        console.print(f"- {line}")
+    console.print(f"- {data['perk']['master_cape']}")
+
+
 data_app = typer.Typer(no_args_is_help=True, help="Data package: status, check, apply, rollback")
 app.add_typer(data_app, name="data")
 
