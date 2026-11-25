@@ -72,12 +72,16 @@ then writes the archive and `.sig` to `dist/data/`. Publish with
 
     uv run python scripts/publish_data_package.py dist/data/rune-advisor-data-1-2026.11.12.tar.xz [--dry-run]
 
-which uploads to `dl.runeadvisor.com` over sftp (account `rune-dl`, the user's SSH key, directory `/data`; accept
-the host key once with a manual `sftp rune-dl@dl.runeadvisor.com`): it checks the package the way an app would
-(refusing when `PUBLIC_KEYS` is empty: no app could verify it), uploads the package and signature, then the
-index last by rename (the index is what makes the package visible), fetches all three back over HTTPS and
-compares, and removes superseded packages (per format the indexed version and the one before it stay). A
-published file is never overwritten. Apps find it with `[data] url = "https://dl.runeadvisor.com"`; there is
+which publishes by `git push`: what `dl.runeadvisor.com` serves is the tree of branch `main` in the repository
+`rune-dl@upload.runeadvisor.com:dl.git` (the user's SSH key; accept the host key once with a manual
+`ssh rune-dl@upload.runeadvisor.com`, which then prints a git-shell refusal: expected). The script checks the
+package the way an app would (refusing when `PUBLIC_KEYS` is empty: no app could verify it), clones the
+repository, and makes one commit under `data/`: the package and signature, the new `index.json`, and the removal
+of superseded packages (per format the indexed version and the one before it stay). The server switches to a
+pushed commit atomically, so the index and the package it names appear together. If `main` moved meanwhile (the
+server's operators push `planner-assets/` to the same tree), it makes the commit again on the new tip; it never
+force-pushes and touches nothing outside `data/`. Then it fetches all three back over HTTPS and compares,
+retrying for a few minutes (a CDN may serve the tree later). A published file is never overwritten. Apps find it with `[data] url = "https://dl.runeadvisor.com"`; there is
 still no default URL in the app. `NOTICE` in the package carries the wiki attribution and the CC BY-NC-SA 3.0
 statement; the data is shared non-commercially under that licence.
 

@@ -4724,59 +4724,54 @@ def test_publish_data_package_prune_rule():
     assert not pub.NAME.match("rune-advisor-data-1-2026.11.10.tar.xz.part") and not pub.NAME.match("../x.tar.xz")
 
 
-def test_publish_data_package_over_sftp(tmp_path):
-    """The publish script against a real sftp server (a local sshd) and a local web server: refuses without a
-    key, uploads package + signature then the index, verifies over HTTP, never overwrites, prunes old versions.
-    Skipped where no sshd can be started (a build sandbox)."""
+def test_publish_data_package_over_git(tmp_path, capsys, monkeypatch):
+    """The publish script against a local bare repository standing in for `dl.git` (a post-receive hook exports
+    `main` and switches a symlink onto it, like the server's) and a local web server serving that symlink:
+    refuses without a key, a dry run pushes nothing, the first push creates `main` with package, signature and
+    index in one commit, verifies over HTTP, never overwrites, prunes old versions, leaves everything outside
+    `data/` alone, and when `main` moved between clone and push makes the commit again on the new tip."""
     import functools
     import http.server
-    import os
+    import importlib.util
     import shutil
-    import socket
     import subprocess
     import threading
-    import time
 
     import pytest
 
     from rune_advisor import datapkg
 
-    sshd = shutil.which("sshd") or ("/usr/sbin/sshd" if os.path.exists("/usr/sbin/sshd") else None)
-    if not (sshd and shutil.which("sftp") and shutil.which("ssh-keygen")):
-        pytest.skip("no sshd/sftp here")
+    if not shutil.which("git") or not shutil.which("tar"):
+        pytest.skip("no git/tar here")
+    spec = importlib.util.spec_from_file_location("publish_data_package", _REPO / "scripts" / "publish_data_package.py")
+    pub = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pub)
 
-    def free_port():
-        with socket.socket() as s:
-            s.bind(("127.0.0.1", 0))
-            return s.getsockname()[1]
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@example.invalid", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
 
-    ssh = tmp_path / "ssh"
-    ssh.mkdir(mode=0o700)
-    served = tmp_path / "served" / "data"
-    served.mkdir(parents=True)
-    for key in ("host", "client"):
-        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(ssh / key)], check=True)
-    (ssh / "authorized_keys").write_text((ssh / "client.pub").read_text())
-    port = free_port()
-    (ssh / "sshd_config").write_text(
-        f"Port {port}\nListenAddress 127.0.0.1\nHostKey {ssh / 'host'}\nAuthorizedKeysFile {ssh / 'authorized_keys'}\n"
-        f"PidFile {ssh / 'pid'}\nStrictModes no\nUsePAM no\nPasswordAuthentication no\nSubsystem sftp internal-sftp\n")
-    daemon = subprocess.Popen([sshd, "-D", "-e", "-f", str(ssh / "sshd_config")], stderr=subprocess.PIPE)
+    def git(*args, cwd=None):
+        return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True,
+                              env={**__import__("os").environ, **env}).stdout
+
+    bare, exports, site = tmp_path / "dl.git", tmp_path / "exports", tmp_path / "site"
+    exports.mkdir()
+    git("init", "--quiet", "--bare", "--initial-branch=main", str(bare))
+    (bare / "hooks" / "post-receive").write_text(
+        "#!/bin/sh\nset -e\nunset GIT_QUARANTINE_PATH\nwhile read old new ref; do\n"
+        '  [ "$ref" = refs/heads/main ] || continue\n'
+        f'  d="{exports}/$new"; mkdir -p "$d"; git archive "$new" | tar -x -C "$d"\n'
+        f'  ln -sfn "$d" "{site}.tmp"; mv -T "{site}.tmp" "{site}"\n'
+        '  echo "test dl now serves $new" >&2\ndone\n')
+    (bare / "hooks" / "post-receive").chmod(0o755)
     web = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(tmp_path / "served")))
+        http.server.SimpleHTTPRequestHandler, directory=str(site)))
     web.RequestHandlerClass.log_message = lambda *a: None
     threading.Thread(target=web.serve_forever, daemon=True).start()
+    base_url = f"http://127.0.0.1:{web.server_address[1]}"
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
     try:
-        for _ in range(50):
-            with socket.socket() as s:
-                if s.connect_ex(("127.0.0.1", port)) == 0:
-                    break
-            if daemon.poll() is not None:
-                pytest.skip("sshd would not start here: " + daemon.stderr.read().decode()[-200:])
-            time.sleep(0.1)
-        else:
-            pytest.skip("sshd did not listen")
-
         private, public = datapkg.generate_keypair()
         data = tmp_path / "tree"
         data.mkdir()
@@ -4788,54 +4783,82 @@ def test_publish_data_package_over_sftp(tmp_path):
             return archive
 
         def publish(*extra, key=True):
-            cmd = [_sys.executable, str(_REPO / "scripts" / "publish_data_package.py"), *map(str, extra),
-                   "--host", "127.0.0.1", "--port", str(port), "--user", os.environ.get("USER") or __import__("getpass").getuser(),
-                   "--remote-dir", str(served), "--base-url", f"http://127.0.0.1:{web.server_address[1]}",
-                   f"--ssh-option=-oIdentityFile={ssh / 'client'}", "--ssh-option=-oIdentitiesOnly=yes",
-                   "--ssh-option=-oStrictHostKeyChecking=no", f"--ssh-option=-oUserKnownHostsFile={ssh / 'known'}"]
-            if key:
-                cmd += ["--public-key", public]
-            done = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            return done.returncode, done.stdout + done.stderr
+            argv = [*map(str, extra), "--remote", str(bare), "--base-url", base_url, "--verify-seconds", "5"]
+            code = pub.main(argv + (["--public-key", public] if key else []))
+            captured = capsys.readouterr()
+            return code, captured.out + captured.err
 
-        files = lambda: sorted(p.name for p in served.iterdir())
+        def tree():
+            listed = subprocess.run(["git", "ls-tree", "-r", "--name-only", "main"], cwd=bare, capture_output=True, text=True)
+            return sorted(listed.stdout.split())
+
+        commits = lambda: int(git("rev-list", "--count", "main", cwd=bare)) if tree() else 0
+        served = lambda name: (site / "data" / name)
+
         first = build("2026.11.1")
         code, text = publish(first, key=False)
-        assert code == 1 and "no public key" in text and files() == []   # nobody could verify it: refused
+        assert code == 1 and "no public key" in text and tree() == []   # nobody could verify it: refused
         code, text = publish(first, "--dry-run")
-        assert code == 0 and "dry run complete" in text and files() == []
+        assert code == 0 and "dry run complete" in text and "would push" in text and tree() == []
         code, text = publish(first)
-        if code != 0 and "sftp failed" in text and files() == []:
-            pytest.skip("sftp login to the local sshd is not possible here: " + text[-200:])
-        assert code == 0 and "publish: ok" in text and "verified over HTTPS" in text, text
-        assert files() == ["index.json", first.name, first.name + ".sig"]
-        assert json.loads((served / "index.json").read_text()) == {"packages": {"1": {"version": "2026.11.1", "file": first.name}}}
-        assert (served / first.name).read_bytes() == first.read_bytes()
+        assert code == 0 and "publish: ok" in text and "verified over HTTPS" in text and "test dl now serves" in text, text
+        assert tree() == ["data/index.json", f"data/{first.name}", f"data/{first.name}.sig"] and commits() == 1
+        assert json.loads(served("index.json").read_text()) == {"packages": {"1": {"version": "2026.11.1", "file": first.name}}}
+        assert served(first.name).read_bytes() == first.read_bytes()
 
         code, text = publish(first)
-        assert code == 1 and "already on the server" in text            # immutable
+        assert code == 1 and "already published" in text and commits() == 1    # immutable
         older = build("2026.10.1")
         code, text = publish(older)
-        assert code == 1 and "downgrade" in text and older.name not in files()
-        (served / "index.json").write_text(json.dumps({"packages": {"1": {"version": "2026.11.1", "file": first.name},
-                                                                    "0": {"version": "2025.1.1", "file": "x"}}}))
+        assert code == 1 and "downgrade" in text and commits() == 1
+
+        # SysAdmin's pushes own everything outside data/ (planner assets, the CDN's header file).
+        other = tmp_path / "other"
+        git("clone", "--quiet", str(bare), str(other))
+        (other / "planner-assets").mkdir()
+        (other / "planner-assets" / "a.js").write_text("1")
+        (other / "data" / "index.json").write_text(json.dumps({"packages": {
+            "1": {"version": "2026.11.1", "file": first.name}, "0": {"version": "2025.1.1", "file": "x"}}}))
+        git("add", "-A", cwd=other)
+        git("commit", "--quiet", "-m", "assets", cwd=other)
+        git("push", "--quiet", "origin", "HEAD:main", cwd=other)
+
         second, third = build("2026.11.2"), build("2026.11.3")
         assert publish(second)[0] == 0
-        code, text = publish(third)
-        assert code == 0 and f"removed: {first.name}, {first.name}.sig" in text, text
-        assert files() == ["index.json", second.name, second.name + ".sig", third.name, third.name + ".sig"]
-        index = json.loads((served / "index.json").read_text())["packages"]
+        # main moves between the clone and the push: the commit is made again on the new tip, never forced.
+        real_push, moved = pub.Repo.push, []
+
+        def push_after_someone_else(self):
+            if not moved:
+                (other / "planner-assets" / "b.js").write_text("2")
+                git("pull", "--quiet", "--ff-only", cwd=other)
+                git("add", "-A", cwd=other)
+                git("commit", "--quiet", "-m", "more assets", cwd=other)
+                git("push", "--quiet", "origin", "HEAD:main", cwd=other)
+                moved.append(True)
+            return real_push(self)
+
+        pub.Repo.push = push_after_someone_else
+        try:
+            code, text = publish(third)
+        finally:
+            pub.Repo.push = real_push
+        assert code == 0 and "main moved" in text and f"removed: {first.name}, {first.name}.sig" in text, text
+        assert tree() == ["data/index.json", f"data/{second.name}", f"data/{second.name}.sig", f"data/{third.name}",
+                          f"data/{third.name}.sig", "planner-assets/a.js", "planner-assets/b.js"]
+        index = json.loads(served("index.json").read_text())["packages"]
         assert index["1"] == {"version": "2026.11.3", "file": third.name} and index["0"]["version"] == "2025.1.1"
+        assert (site / "planner-assets" / "b.js").read_text() == "2"
         # A tampered package never leaves the machine.
         bad = build("2026.11.4")
         bad.write_bytes(bad.read_bytes() + b"x")
+        before = commits()
         code, text = publish(bad)
-        assert code == 1 and "does not verify" in text and bad.name not in files()
+        assert code == 1 and "does not verify" in text and commits() == before
         # What the app sees through its own update check.
-        offer = datapkg.check(f"http://127.0.0.1:{web.server_address[1]}")
+        offer = datapkg.check(base_url)
         assert offer.version == "2026.11.3"
     finally:
-        daemon.terminate()
         web.shutdown()
 
 
