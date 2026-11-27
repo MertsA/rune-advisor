@@ -27,7 +27,7 @@ from ..mechanics.processing import capped, effective
 # Workbench recipes whose own speed holds (not capped at the skill's rate): restoring is fast and fed by gathering,
 # so the gathering, costed separately, is what limits it (Context._recipe_band_run).
 UNCAPPED_FACILITIES = {"Archaeologist's workbench", "Daemonheim Rewards"}  # recipes whose speed is their own
-from ..resources import LevelPlan, ResourcePool, plan_level
+from ..resources import LevelPlan, Resource, ResourcePool, plan_level
 from ..sources.wiki import QuestInfo
 from ..xp import level_at_xp, level_cap, xp_at
 from .catalogue import MIN_RATE_SHARE, _recipe_seconds, _usable, bank_mix, catalogue, recipe_level
@@ -168,6 +168,9 @@ class Context:
     # Managing Miscellania's bookings shared by plans made in sequence (joint plans): each kept plan's gathering adds
     # its subject-days, so a later goal can't book the same subjects. None: every plan has the kingdom to itself.
     kingdom: object | None = None
+    # The base camp's bookings and store (basecamp.ledger) shared by plans made in sequence the same way: worker-days
+    # on each resource, the spare store and compacted resources stations dropped. None: every plan has the camp alone.
+    base_camp: object | None = None
     # Play hours earlier goals of a sequence took (joint plans): passive supplies kept bringing things in meanwhile.
     play_elapsed: float = 0.0
     # Builds the cost model for another version of the player (a what-if with a scroll read: tracks/scrolls.py), whose
@@ -177,6 +180,8 @@ class Context:
     # gathering.COINS_PER_HOUR. None (tests, offline, ironmen) leaves bought supplies uncosted.
     prices: object | None = None
     unique_value_hours: float = 0.0  # rune_advisor.toml unique_value_hours: what a missing log unique is worth
+    unlock_value_hours: float = 2.0  # rune_advisor.toml: what an unlock is worth for itself when it competes with xp
+    _advance_time: object | None = field(default=None, repr=False)  # advance_time.allocation, worked out once
     prefer_exquisite_urns: bool = False  # rune_advisor.toml: exquisite urns whenever they can be made, cost aside
     _urn_options: dict = field(default_factory=dict, repr=False)
     _urn_xp: dict = field(default_factory=dict, repr=False)
@@ -264,8 +269,7 @@ class Context:
         if skill == "Hitpoints" and skill not in self.cost.overridden:
             return self._constitution_plan(target_xp)
         urn = self._urn(skill, target_xp - p.xp(skill)) if self.urns else None
-        plan = plan_level(self.cost, self.resources, skill, p.xp(skill), p.level(skill), target_xp,
-                          p.bonus_xp.get(skill, 0), use_bonus=p.members, urn=urn)
+        plan = self._plan_with_station(skill, target_xp, urn)
         urn_items = dict(plan.items_used)  # urn runes; _apply_materials replaces items_used
         if plan.urn_xp and urn and urn.prereq:
             plan.steps.append(urn.prereq)
@@ -293,6 +297,89 @@ class Context:
             plan.steps.append(f"carry {math.ceil(n):,} {pu.name}s: +{xp:,.0f} Prayer xp from the kills' ashes")
         if plan.hours and (side := self.side_option(skill, p.level(skill))):
             plan.steps.append(side)
+        return plan
+
+    STATION_PASSES = 8  # bisection steps for a station's window
+
+    def _plan_with_station(self, skill: str, target_xp: float, urn) -> LevelPlan:
+        """plan_level, with the skill's Dream of Iaia station (basecamp.py) sized to the plan: its stored xp, the base
+        camp's spare store and what the camp's workers can gather on the station's resource over the plan's window (all
+        of them moved to it if need be: a workforce booking, workforce.py), plus Advance Time days. A few passes: the
+        plan's length depends on the station's xp. A kept plan's bookings and the compacted resources its station
+        actions drop go to Context.base_camp, so later goals of a joint plan see them."""
+        from .. import basecamp
+
+        p = self.player
+
+        def run(pool):
+            return plan_level(self.cost, pool, skill, p.xp(skill), p.level(skill), target_xp,
+                              p.bonus_xp.get(skill, 0), use_bonus=p.members, urn=urn)
+
+        iaia = basecamp.data()["dream_of_iaia"]
+        resource = iaia["stations"].get(skill)
+        if (self.resources is None or resource is None or not basecamp.known(p)
+                or not basecamp.station_built(p, skill)):
+            return run(self.resources)
+        name = f"Dream of Iaia {skill} station"
+        stored = basecamp._var(p, basecamp.STATION_XP_VAR.format(skill.upper())) or 0
+        camp = (self.base_camp or basecamp.ledger(p, self)).copy()
+        per_action, per_xp = iaia["xp_per_action"], iaia["resources_per_xp"]
+        others = [r for r in self.resources.resources if r.name != name]
+        template = next((r for r in self.resources.resources if r.name == name), None) or Resource(
+            name=name, source="Dream of Iaia", xp_fixed=per_action, skills={skill},
+            hours_per_unit=basecamp.seconds_per_action() / 3600, verified=True, trained=True)
+        stock = camp.stock.get(resource, 0.0)
+
+        def attempt(window: float):
+            """The plan when the workers gather over `window` days played (plus Advance Time days)."""
+            days = window + basecamp.advance_days(self, window)
+            gatherable = camp.capacity(resource, resource, basecamp.GATHER, days=days)
+            xp = stored + (stock + gatherable) / per_xp
+            station = dataclasses.replace(
+                template, units=int(xp // per_action),
+                source=f"Dream of Iaia ({stored:,} xp stored, {stock / per_xp:,.0f} from the base camp's spare "
+                       f"{basecamp.NAMES[resource]}, up to {gatherable / per_xp:,.0f} more from its workers over "
+                       f"~{days:.1f} days)")
+            return run(ResourcePool(others + [station])), days
+
+        # The window must be the plan's own play (earlier goals' included): more gathering shortens the plan, so
+        # (play / play-a-day) - window falls as the window grows and has one root. Bisect for it, keeping the low end
+        # (a window the plan's play covers). Play here is plan_level's (training and resources): gathering a plan's
+        # materials comes after (_apply_materials) and isn't in it, so the window is on the short side (conservative:
+        # a re-plan per bisection step would cost a whole level plan each).
+        per_day = gathering.PLAY_HOURS_PER_DAY
+        lo = self.play_elapsed / per_day
+        plan, days = attempt(lo)
+        hi = (self.play_elapsed + plan.hours) / per_day
+        for _ in range(self.STATION_PASSES):
+            if hi - lo < 0.05:
+                break
+            mid = (lo + hi) / 2
+            trial, trial_days = attempt(mid)
+            if (self.play_elapsed + trial.hours) / per_day >= mid:
+                lo, plan, days = mid, trial, trial_days
+            else:
+                hi = mid
+        actions = plan.resources_used.get(name, 0)
+        if actions:
+            need = max(0.0, actions * per_action - stored) * per_xp
+            from_stock = camp.take_stock(resource, need)
+            _, gathered, worker_days = camp.take(resource, need - from_stock, resource, basecamp.GATHER, days=days)
+            moves = []
+            if from_stock:
+                moves.append(f"{from_stock:,.0f} {basecamp.NAMES[resource]} from the store")
+            if worker_days:
+                crew = basecamp.workers(p).get(resource, 0)
+                moves.append(f"{gathered:,.0f} gathered: ~{worker_days:,.0f} worker-days on {basecamp.NAMES[resource]} "
+                             f"(~{worker_days / max(days, 1e-9):.0f} workers over ~{days:.1f} days; {crew} on it now)")
+            if moves:
+                plan.steps.append("stock the station: " + "; ".join(moves))
+            gained, lines = basecamp.station_drops(p, skill, actions)
+            for r, n in gained.items():
+                camp.add_stock(r, n)
+            plan.steps.append(f"the station's {actions:,} actions also drop: " + "; ".join(lines))
+            if self.base_camp is not None:
+                self.base_camp.adopt(camp)
         return plan
 
     def _top_method(self, skill: str) -> dict | None:

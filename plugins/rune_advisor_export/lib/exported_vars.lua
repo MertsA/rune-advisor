@@ -67,6 +67,53 @@ M.FIELDS = {
     { "RAID1_GOEBIE_REP", 14, "bit" },              -- Mazcab (goebie) reputation
     -- Things the player has built up or unlocked
     { "DINO_BASE_CAMP_SKILLCAPE_STAND_STATE", 6, "bit" }, -- Anachronia base camp: the skillcape stand
+    -- Anachronia base camp: resources in store, workers on each, every building's tier
+    { "DINO_BASE_CAMP_RESOURCE_CLAY", 32, "var" },
+    { "DINO_BASE_CAMP_RESOURCE_LEAVES", 32, "var" },
+    { "DINO_BASE_CAMP_RESOURCE_PELTS", 32, "var" },
+    { "DINO_BASE_CAMP_RESOURCE_STONE", 32, "var" },
+    { "DINO_BASE_CAMP_RESOURCE_VINES", 32, "var" },
+    { "DINO_BASE_CAMP_RESOURCE_WOOD", 32, "var" },
+    { "DINO_BASE_CAMP_WORKER_ASSIGNED_CLAY", 8, "bit" },
+    { "DINO_BASE_CAMP_WORKER_ASSIGNED_LEAVES", 8, "bit" },
+    { "DINO_BASE_CAMP_WORKER_ASSIGNED_PELTS", 8, "bit" },
+    { "DINO_BASE_CAMP_WORKER_ASSIGNED_STONE", 8, "bit" },
+    { "DINO_BASE_CAMP_WORKER_ASSIGNED_VINES", 8, "bit" },
+    { "DINO_BASE_CAMP_WORKER_ASSIGNED_WOOD", 8, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_BANK_CHEST", 1, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_HUNTER_LODGE", 3, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_LODESTONE", 1, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_PLAYER_LODGE", 3, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_SLAYER_LODGE", 3, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_SLEEPING_QUARTERS", 3, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_SPA", 3, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_STOREHOUSE", 3, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_TOTEM", 1, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_TIER_TOWNHALL", 3, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_1", 1, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_2", 1, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_3", 1, "bit" },
+    { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_4", 1, "bit" },
+    -- Fairy rings built or repaired before they work (the Kharazi, Lost Grove and Fenmoor rings; Mos Le'Harmless's
+    -- bridge, both halves)
+    { "FAIRYRING_KHARAZI_UNLOCKED", 1, "bit" },
+    { "FAIRYRING_THE_LOST_GROVE_UNLOCKED", 1, "bit" },
+    { "FAIRYRING_FENMOOR_UNLOCKED", 1, "bit" },
+    { "FT3_MOS_LE_HARMLESS_BRIDGE_1", 1, "bit" },
+    { "FT3_MOS_LE_HARMLESS_BRIDGE_2", 1, "bit" },
+    -- The Dream of Iaia's skilling stations: whether each is built, and the xp still stored in it
+    { "QUEST_EGW_FINALE_REWARD_STATION_STATE_CONSTRUCTION", 1, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_STATE_CRAFTING", 1, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_STATE_FISHING", 1, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_STATE_FLETCHING", 1, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_STATE_HERBLORE", 1, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_STATE_HUNTER", 1, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_XP_CONSTRUCTION", 21, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_XP_CRAFTING", 21, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_XP_FISHING", 21, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_XP_FLETCHING", 21, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_XP_HERBLORE", 21, "bit" },
+    { "QUEST_EGW_FINALE_REWARD_STATION_XP_HUNTER", 21, "bit" },
     { "PVM_HUB_CAMPFIRE_STATE", 4, "bit" },         -- War's Retreat campfire upgrade tier
     -- Archaeology Guild shop: tiers bought (soil box upgrades are with the soil box below)
     { "ARCH_MATERIAL_STORAGE_UPGRADE", 2, "bit" },

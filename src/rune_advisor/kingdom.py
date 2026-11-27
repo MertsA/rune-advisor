@@ -21,7 +21,9 @@ setting's encoding is unknown) are shown in the profile (`note`): plans choose t
 
 from __future__ import annotations
 
+from . import workforce
 from .models import PlayerState
+from .workforce import Workforce
 
 SUBJECTS_PER_CATEGORY = 10
 COINS_PER_SUBJECT_DAY = 5_000
@@ -109,6 +111,21 @@ def coffers(player: PlayerState) -> int | None:
     return _var(player, COFFERS_VAR)
 
 
+def current_setting(player: PlayerState, category: str) -> str | None:
+    """The setting a category runs on now, from the export: herbs or flax, raw or cooked fish; the one-setting
+    categories as they are. None for hardwood (MISC_RAREWOOD_TYPE's encoding is unknown) and when not exported."""
+    if category == "herbs":
+        v = _var(player, "MISC_HERBS_OR_FLAX")
+        return None if v is None else ("flax" if v else "herbs")
+    if category == "fishing":
+        v = _var(player, "MISC_COOKED")
+        return None if v is None else ("cooked" if v else "raw")
+    if category == "hardwood":
+        return None
+    settings = CATEGORIES.get(category) or {}
+    return next(iter(settings)) if len(settings) == 1 else None
+
+
 def note(player: PlayerState) -> str | None:
     """The kingdom as the export shows it, for the profile."""
     if not managed(player) or (approval := _var(player, APPROVAL_VAR)) is None:
@@ -130,57 +147,32 @@ def items() -> frozenset[str]:
     return frozenset(i for settings in CATEGORIES.values() for items in settings.values() for i in items)
 
 
-class Ledger:
-    """One plan's (or a joint plan's) use of passive supplies over a window of `days`: subject-days per (category, setting), at most 10
-    subjects a category and the player's subjects in all, and what each item has drawn from them. Items that come
-    together (tuna and swordfish) share the subject-days bought for either."""
+class _Kingdom(Workforce):
+    """Managing Miscellania as a workforce (workforce.py): 10 or 15 subjects, at most 10 a category, 5,000 coins of pay
+    a subject-day, the exported coffers already paid."""
+
+    name, worker, cost_per_worker_day = "Managing Miscellania", "subject", COINS_PER_SUBJECT_DAY
+
+    def workers(self, player: PlayerState) -> int:
+        return subjects(player)
+
+    def per_category(self, player: PlayerState) -> int:
+        return SUBJECTS_PER_CATEGORY
+
+    def output(self, player: PlayerState, category: str, setting: str) -> dict[str, float]:
+        return per_subject_day(player, category, setting)
+
+    def prepaid(self, player: PlayerState) -> float:
+        return (coffers(player) or 0) / COINS_PER_SUBJECT_DAY
+
+
+KINGDOM = _Kingdom()
+
+
+class Ledger(workforce.Ledger):
+    """The kingdom's bookings (workforce.Ledger): subject-days per (category, setting) over a plan's window, at most 10
+    subjects a category and the player's subjects in all; items that come together (tuna and swordfish) share the
+    subject-days bought for either; the coffers pay first."""
 
     def __init__(self, player: PlayerState, days: float):
-        self.player, self.days = player, days
-        self.alloc: dict[tuple[str, str], float] = {}
-        self.passive: dict[str, float] = {}  # other passive supplies (weekly claims, kept-planted patches): units drawn
-        self.drawn: dict[tuple[str, str, str], float] = {}
-        # Subject-days the exported coffers already pay for, less what bookings have used.
-        self.prepaid = (coffers(player) or 0) / COINS_PER_SUBJECT_DAY
-
-    def copy(self) -> Ledger:
-        out = Ledger(self.player, self.days)
-        out.alloc, out.drawn, out.passive = dict(self.alloc), dict(self.drawn), dict(self.passive)
-        out.prepaid = self.prepaid
-        return out
-
-    def adopt(self, other: Ledger) -> None:
-        """Take on another ledger's bookings (a plan's working copy, once the plan is kept)."""
-        self.alloc, self.drawn, self.passive = dict(other.alloc), dict(other.drawn), dict(other.passive)
-        self.prepaid = other.prepaid
-
-    def pay(self, days: float) -> tuple[float, float]:
-        """(new coins, coffers coins) for `days` of new subject-days: the coffers' pay first."""
-        from_coffers = min(days, self.prepaid)
-        self.prepaid -= from_coffers
-        return (days - from_coffers) * COINS_PER_SUBJECT_DAY, from_coffers * COINS_PER_SUBJECT_DAY
-
-    def capacity(self, item: str, category: str, setting: str, days: float | None = None) -> float:
-        """How many of `item` this setting can still bring in: partner subject-days already paid, then free subjects."""
-        per = per_subject_day(self.player, category, setting)[item]
-        key = (category, setting)
-        spare = max(0.0, self.alloc.get(key, 0.0) * per - self.drawn.get((*key, item), 0.0))
-        return spare + self._room(category, days) * per
-
-    def _room(self, category: str, days: float | None = None) -> float:
-        days = self.days if days is None else days
-        cat = sum(v for (c, _), v in self.alloc.items() if c == category)
-        total = sum(self.alloc.values())
-        return max(0.0, min(SUBJECTS_PER_CATEGORY * days - cat, subjects(self.player) * days - total))
-
-    def take(self, item: str, n: float, category: str, setting: str) -> tuple[float, float, float]:
-        """Draw up to `n` of `item`: (units from subject-days already bought, units from new ones, new subject-days)."""
-        per = per_subject_day(self.player, category, setting)[item]
-        key = (category, setting)
-        made = self.alloc.get(key, 0.0) * per
-        spare = max(0.0, made - self.drawn.get((*key, item), 0.0))
-        free = min(n, spare)
-        new_days = min((n - free) / per, self._room(category))
-        self.alloc[key] = self.alloc.get(key, 0.0) + new_days
-        self.drawn[(*key, item)] = self.drawn.get((*key, item), 0.0) + free + new_days * per
-        return free, new_days * per, new_days
+        super().__init__(KINGDOM, player, days)

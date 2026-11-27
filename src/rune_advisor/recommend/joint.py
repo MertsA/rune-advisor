@@ -13,7 +13,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 
-from .. import kingdom, reputation
+from .. import basecamp, kingdom, reputation
 from ..models import PlayerState, Skill
 from ..resources import LevelPlan, ResourcePool
 from ..xp import MAX_XP, level_at_xp, xp_at
@@ -102,6 +102,7 @@ def _sequence(ctx: Context, goals: list[tuple[str, int]], alone: dict, value_sid
     player, pool = _copy_player(ctx.player), _copy_pool(ctx.resources)
     # One kingdom and one set of weekly claims for all goals; each goal's window starts after the earlier goals' play.
     booked = (ctx.kingdom or kingdom.Ledger(ctx.player, 0.0)).copy()
+    camp = (ctx.base_camp or basecamp.ledger(ctx.player, ctx)).copy() if basecamp.known(ctx.player) else None
     elapsed = ctx.play_elapsed
     credited: dict[str, float] = {}
     joint = JointPlan()
@@ -115,7 +116,7 @@ def _sequence(ctx: Context, goals: list[tuple[str, int]], alone: dict, value_sid
                     wanted[s] = alone[(s, t)].hours / max(1.0, xp_at(s, t) - ctx.player.xp(s))
         step_ctx = dataclasses.replace(ctx, player=player, resources=pool, side_options=False, wanted=wanted,
                                        _needs=None, _gatherer=None, _finding_needs=False, _activities=None,
-                                       _urn_options={}, _urn_xp={}, kingdom=booked,
+                                       _urn_options={}, _urn_xp={}, kingdom=booked, base_camp=camp,
                                        play_elapsed=elapsed)
         plan = step_ctx.level_plan(skill, target)
         elapsed += plan.hours

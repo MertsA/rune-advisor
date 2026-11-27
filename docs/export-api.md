@@ -274,7 +274,7 @@ guards are settings in the same file (see Accounts).
 - Hand-listed fields (plugin 0.5.0): `lib/exported_vars.lua` is a static manifest, every variable written out
   as `{ name, width, kind }` in wire order. Each travels at its width: a VarBit as wide as its mask (an item log
   count is 8 or 16 bits), a whole variable or a client variable 32 bits, never capped; about 17,600 bits for
-  ~1,603 fields, where 0.4.x spent 32 bits a name. `scripts/build_exported_vars.py` fills in widths, kinds and
+  ~1,641 fields, where 0.4.x spent 32 bits a name. `scripts/build_exported_vars.py` fills in widths, kinds and
   the generated family blocks (every variable with a prefix, at build time) from the dev plugin's var dump, and
   writes the server's copy, `src/rune_advisor/wire_manifests/<hash>.json` (FNV-1a 32 of `NAME/width,...`); every
   released manifest stays there, so any stored state or history entry can be read. A full post names its

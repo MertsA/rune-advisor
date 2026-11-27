@@ -67,6 +67,9 @@ class Resource:
     spend_first: bool = False
     # xp per unit at a level, for rewards with a curve of their own (reward books); beats xp_fixed/xp_per_level.
     xp_fn: Callable[[int], float] | None = None
+    # The xp is trained xp (a Dream of Iaia station's actions): banked bonus xp pays out on top of it, 1:1 while it
+    # lasts, as it does on a grind. Lamps and the like are not trained xp and get no bonus.
+    trained: bool = False
 
     def xp_per_unit(self, level: int, skill: str | None = None) -> float:
         if self.xp_fn:
@@ -125,12 +128,33 @@ def load_pool(player: PlayerState, extra: list[dict[str, Any]] | None = None) ->
         pool.append(Resource(name="Penguin points", source="Larry/Chuck at the Ardougne Zoo (Spy Club lamps)",
                              lamp="small", units=player.penguin_points, hours_per_unit=PENGUIN_POINT_HOURS,
                              verified=True))
+    pool += iaia_resources(player)
     if player.rested_xp:
         pool.append(Resource(name="rested xp", source="Aster (Fort Forinthry Town Hall)", star="small",
                              scale=0.01, units=player.rested_xp, all_at_once=True, cadence="regen",
                              spend_first=player.rested_xp >= rested_cap(player),
                              hours_per_unit=0.1 / player.rested_xp, verified=True))
     return ResourcePool(pool)
+
+
+def iaia_resources(player: PlayerState) -> list[Resource]:
+    """The Dream of Iaia's built stations (basecamp.py): the xp stored in each plus what the base camp's spare
+    resources can still add, paid 175 xp an action every 1.8 seconds in the station's skill. Context.level_plan
+    resizes a station for each plan (the spend-or-wait choice, the workers' intake over the plan's hours)."""
+    from . import basecamp
+
+    out = []
+    per_action = basecamp.data()["dream_of_iaia"]["xp_per_action"]
+    for skill in basecamp.data()["dream_of_iaia"]["stations"]:
+        found = basecamp.station_xp(player, skill)
+        if not found or sum(found) < per_action:
+            continue
+        stored, extra = found
+        how = f"{stored:,} xp stored" + (f" + {extra:,} from spare base camp resources" if extra else "")
+        out.append(Resource(name=f"Dream of Iaia {skill} station", source=f"Dream of Iaia ({how})",
+                            xp_fixed=per_action, units=(stored + extra) // per_action, skills={skill},
+                            hours_per_unit=basecamp.seconds_per_action() / 3600, verified=True, trained=True))
+    return out
 
 
 # A completed task set's antique lamps, named as the wiki does ("Antique lamp (Elite Ardougne Tasks)").
@@ -291,6 +315,7 @@ def plan_level(cost, pool: ResourcePool | None, skill: str, current_xp: int, cur
         return LevelPlan(0.0, [])
     hours, steps, used_xp = 0.0, [], 0.0
     used: dict[str, int] = {}
+    bonus_left = float(banked_bonus) if use_bonus else 0.0  # banked bonus xp a trained resource can draw on
     grind_rate = cost.rate(skill, current_level)
     options = []
     for r in (pool.for_skill(skill) if pool else []):
@@ -304,19 +329,25 @@ def plan_level(cost, pool: ResourcePool | None, skill: str, current_xp: int, cur
         if need <= 0:
             break
         # One unit at a time: level-scaled xp grows as each unit raises the level.
-        n, gained = 0, 0.0
+        n, gained, paid = 0, 0.0, 0.0
         while n < r.units and need > 0:
             xp = r.xp_per_unit(level_at_xp(skill, current_xp + used_xp), skill)
+            extra = min(xp, bonus_left) if r.trained else 0.0  # bonus xp on top of trained xp
+            bonus_left -= extra
+            paid += extra
+            xp += extra
             n, gained, used_xp, need = n + 1, gained + xp, used_xp + xp, need - xp
         hours += n * r.hours_per_unit
         used[r.name] = used.get(r.name, 0) + n
         flag = "" if r.verified else " (xp unverified)"
-        steps.append(f"use {n} x {r.name}{f' from {r.source}' if r.source else ''} on {skill} (~{gained:,.0f} xp){flag}")
+        with_bonus = f", {paid:,.0f} of it banked bonus xp" if paid else ""
+        steps.append(f"use {n} x {r.name}{f' from {r.source}' if r.source else ''} on {skill} "
+                     f"(~{gained:,.0f} xp{with_bonus}){flag}")
     plan = LevelPlan(hours, steps, used_xp, resources_used=used)
     if need <= 0:
         return plan
     start = int(current_xp + used_xp)
-    bonus = _gather_bonus(plan, pool, skill, level_at_xp(skill, start), need, banked_bonus) if use_bonus else 0.0
+    bonus = _gather_bonus(plan, pool, skill, level_at_xp(skill, start), need, bonus_left) if use_bonus else 0.0
     if banked_bonus and not use_bonus:
         steps.append(f"{banked_bonus:,.0f} banked {skill} bonus xp can't be used on free-to-play")
     # Each trained xp is worth 1 + bonus (while bonus lasts) + urn share. Bonus xp pays 1:1 on the

@@ -286,7 +286,7 @@ class CostModel:
             capped = [(r, why) for r in rows if (why := limited_activity(r))]
             rows = [r for r in rows if not limited_activity(r)]
             if player is not None:
-                from . import fort
+                from . import basecamp, fort
 
                 kept = []
                 for r in rows:
@@ -294,6 +294,7 @@ class CostModel:
                     if r is None:
                         excluded.append(("Prayer", "Fort Forinthry chapel", [why]))
                         continue
+                    r = basecamp.adjust_row(r, player)  # the Anachronia agility courses with the base camp Spa's bonus
                     if missing := requirements.unmet(r.get("requirements"), player, tuple(row_skills(r))):
                         excluded.append((r["skill"], r["method"], missing))
                     elif getattr(player, "ironman", False) and (th := requirements.th_only_items(r.get("requirements"))

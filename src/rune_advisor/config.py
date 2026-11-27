@@ -96,6 +96,10 @@ class Settings:
     # Hours a missing collection-log unique is worth to the player (netted off a boss log's cost). 0 (the
     # default, the user's call): uniques are listed, not valued.
     unique_value_hours: float = 0.0
+    # Hours an unlock is worth for itself, beyond any perk the planner models, where an unlock competes with xp for
+    # the same supply (base camp upgrades against Dream of Iaia stations; the user, 2026-11-26: "some inherent boost
+    # towards unlocks even if the rewards are unmodeled").
+    unlock_value_hours: float = 2.0
     prefer_exquisite_urns: bool = False  # use exquisite urns whenever they can be made, cost aside  # money-making rate for coins as time (default gathering.COINS_PER_HOUR)
     # Extra/stocked xp resources ([[resources]] tables), see data/xp_resources.toml.
     resources: list[dict] = field(default_factory=list)
@@ -170,6 +174,7 @@ def load_settings(path: Path | None = None, beta: bool = False) -> Settings:
         s.coins_per_hour = raw.get("coins_per_hour")
         s.play_hours_per_day = raw.get("play_hours_per_day")
         s.unique_value_hours = float(raw.get("unique_value_hours", 0.0))
+        s.unlock_value_hours = float(raw.get("unlock_value_hours", 2.0))
         s.prefer_exquisite_urns = bool(raw.get("prefer_exquisite_urns", False))
         s.resources = raw.get("resources", [])
         s.methods = raw.get("methods", [])

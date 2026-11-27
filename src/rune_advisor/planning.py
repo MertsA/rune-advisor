@@ -77,6 +77,7 @@ def context_for(player, settings, client: CachedClient, members: bool | None = N
         members_only_achievements=set() if player.members else wiki.members_only_achievements(client),
         prices=None if player.ironman else _prices(client, player),
         unique_value_hours=settings.unique_value_hours,
+        unlock_value_hours=settings.unlock_value_hours,
         prefer_exquisite_urns=settings.prefer_exquisite_urns,
         build_cost=build_cost,
     )
