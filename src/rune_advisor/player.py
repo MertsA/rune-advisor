@@ -612,9 +612,11 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
     # overrides.toml's `rested_xp` still wins (applied after).
     if isinstance(rested := p.vars.get(RESTED_XP_VAR), int) and rested >= 0:
         p.rested_xp = rested
-    from . import basecamp, kingdom
+    from . import archaeology_guild, basecamp, kingdom
 
     if text := kingdom.note(p):
+        p.notes.append(text)
+    if text := archaeology_guild.team_note(p):
         p.notes.append(text)
     if text := basecamp.note(p):
         p.notes.append(text)

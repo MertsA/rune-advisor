@@ -2,7 +2,10 @@
 says they are: five rings need five mushrooms "used on the Enchanted lands spot" with a spade on the tool belt, and
 Mos Le'Harmless's ring needs both halves of its bridge repaired. Hand-written; the flags are the export's (0.5.0):
 FAIRYRING_<PLACE>_UNLOCKED in FAIRYRINGS_MULTI and the two FT3_MOS_LE_HARMLESS_BRIDGE_* bits (the test account, who built every
-ring, 2026-11-26). The Ancient Cavern's ring (BJQ) has no variable found by name yet: listed as unknown.
+ring, 2026-11-26). The Ancient Cavern's ring (BJQ) is FAIRYRINGS_SLAYGUILD_RING, its old name: the ring there is a MultiLoc on that bit
+(_67_SLAYGUILD_FAIRY_MUSHROOM_RING; clearing the bit with a cheat on the beta turned it into the unplanted ring with
+"Plant Enchanted land", 2026-11-27). Edgeville's ring, repaired in Rebuilding Edgeville (MAH5_EDGE_FAIRY_RING_FIXED),
+is part of that miniquest and needs nothing here.
 The planner doesn't model travel, so these are unlocks to list, not to value.
 """
 
@@ -15,7 +18,7 @@ RINGS = {
             "tools": ["Spade"], "quests_started": ["Legends' Quest"]},
     "BJS": {"place": "The Lost Grove", "vars": ["FAIRYRING_THE_LOST_GROVE_UNLOCKED"],
             "items": {"Bittercap mushroom": 5}, "tools": ["Spade"]},
-    "BJQ": {"place": "Ancient Cavern", "vars": [], "items": {"Bittercap mushroom": 5}, "tools": ["Spade"],
+    "BJQ": {"place": "Ancient Cavern", "vars": ["FAIRYRINGS_SLAYGUILD_RING"], "items": {"Bittercap mushroom": 5}, "tools": ["Spade"],
             "note": "Barbarian Training up to pyre ships first"},
     "DIQ": {"place": "Fenmoor", "vars": ["FAIRYRING_FENMOOR_UNLOCKED"], "items": {"Bogwart": 5}, "tools": ["Spade"],
             "quests_started": ["Heralds of Crimson"], "levels": {"Agility": 79}},

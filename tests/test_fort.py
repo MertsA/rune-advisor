@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from rune_advisor import fort
+from rune_advisor import archaeology_guild as ag, fort
 from rune_advisor.models import PlayerState
 
 
@@ -77,7 +77,9 @@ def test_command_centre_research():
 
     base = ag.research_cost(100, 100)
     assert ag.research_cost(100, 100, _player(command=2)) == pytest.approx(base * 0.97)
-    assert ag.research_xp(100, 100, _player(command=3)) == pytest.approx(ag.research_xp(100, 100) * 1.03)
+    # Tier 3's speed makes an hour of research take 97% of one (the game's "+3%" shortens it), xp an hour unchanged
+    assert ag.research_speed(_player(command=3)) == pytest.approx(1 / 0.97)
+    assert ag.research_xp(100, 100, _player(command=3)) == pytest.approx(ag.research_xp(100, 100))
 
 
 def test_eternal_reinforcement_is_repeatable_training():
@@ -103,3 +105,67 @@ def test_porter_charges_off_the_buff_icon_become_held_signs():
     unknown = PlayerState(name="PlayerOne", skills={"Divination": Skill("Divination", 99, 13_034_431)})
     apply_plugin_snapshot(unknown, {"vars": {"UI_PORTER_CHARGES": -1}})
     assert "PORTER_STORE" not in unknown.inventories
+
+
+def test_research_team_modifiers_add_with_the_command_centre():
+    # PlayerOne's team on the beta (2026-11-27): Vanescula, Dorian, Eduardo, Movario, fifth slot locked; the game
+    # showed "Speed +25%" (a 1-hour run took 45 minutes) and "Cost +21%" with a tier 3 Command Centre.
+    p = _player(command=3)
+    p.vars.update({n: v for n, v in zip(ag.TEAM_VARS, (17, 4, 5, 18, 0))})
+    speed, cost = ag.team_modifiers(p)
+    assert speed == pytest.approx(0.25) and cost == pytest.approx(0.21)
+    assert ag.research_speed(p) == pytest.approx(1 / 0.75)  # an hour of research takes 45 minutes
+    assert ag.research_cost(100, 100, p) == pytest.approx(ag.research_cost(100, 100) * 1.21)
+    assert ag.research_yield_factor(p, "materials") == 1.25  # Movario's Extra Resourceful (one 1-hour sample)
+    assert ag.research_yield_factor(p, "xp") == 1.0
+    assert "Movario" in ag.team_note(p)
+
+
+
+def _arch_player(**extra):
+    """PlayerOne on the beta (2026-11-27): Professor, the three Varrock students recruited, Tali found, Infernal
+    Source's and Stormguard's mysteries all solved, Everlight's not, Archaeology 100 (the game listed 11 of 21)."""
+    from rune_advisor.models import Achievement, Skill
+
+    def ach(name, done=True, tests=()):
+        return Achievement(name=name, runescore=0, completed=done,
+                           requirements=[{"kind": "varBit", "description": d, "complete": ok} for d, ok in tests])
+
+    p = PlayerState(name="x", skills={"Archaeology": Skill("Archaeology", 100, 14_961_643)})
+    for rank in ag.QUALIFICATION_RANKS:
+        p.achievements[f"Qualification - {rank}"] = ach(f"Qualification - {rank}", rank != "Guildmaster")
+    p.achievements["Research Director"] = ach("Research Director", False, [
+        ("Eduardo unlocked", True), ("Katarina unlocked", True), ("Dorian unlocked", True),
+        ("Alpheus and Eliza unlocked", False), ("Anna Jones unlocked", False)])
+    p.achievements["Finding Tali"] = ach("Finding Tali")
+    p.achievements["Mysteries - Infernal Source"] = ach("Mysteries - Infernal Source")
+    p.achievements["Mysteries - Stormguard Citadel"] = ach("Mysteries - Stormguard Citadel")
+    p.achievements["Mysteries - Everlight"] = ach("Mysteries - Everlight", False, [
+        ("Queen of the Icyene", True), ("Fallen Angels", False)])
+    p.vars.update(extra)
+    return p
+
+
+def test_researchers_unlocked():
+    p = _arch_player()
+    names = {ag.RESEARCHERS[i][0] for i in ag.unlocked(p)}
+    assert names == {"Jimmy", "Scarlet", "Katarina", "Dorian", "Eduardo", "Tali", "Drew", "Helen", "Easty",
+                     "Movario", "Gee'ka"}
+    assert ag.mysteries_left(p, "Everlight") == ["Fallen Angels"]
+    assert ag.team_slots(p) == 4  # one per qualification: the fifth comes with Guildmaster
+    p.vars.update({n: v for n, v in zip(ag.TEAM_VARS, (17, 4, 5, 18, 0))})
+    assert "Vanescula Drakan no longer unlocked" in ag.team_note(p)
+    assert ag.unlocked(PlayerState(name="y")) is None
+
+
+def test_guild_track_lists_consultants_left():
+    from rune_advisor.cost import CostModel
+    from rune_advisor.recommend.base import Context
+    from rune_advisor.recommend.tracks.archaeology_guild import ArchaeologyGuildTrack
+
+    ctx = Context(player=_arch_player(), cost=CostModel.default(use_wiki=False))
+    got = {c.title: c for c in ArchaeologyGuildTrack._consultants(ctx)}
+    assert "Unlock Gee'ka for the research team" not in got
+    vanescula = got["Unlock Vanescula Drakan for the research team"]
+    assert vanescula.uncertain and "Everlight mystery: Fallen Angels" in vanescula.details
+    assert "Archaeology 105" in vanescula.why

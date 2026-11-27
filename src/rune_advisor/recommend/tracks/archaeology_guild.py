@@ -1,12 +1,15 @@
 """Archaeology Guild shop unlocks not yet bought (archaeology_guild.unlocks_left), each costed in chronotes at what
 the gatherer says a chronote takes (handing restored artefacts to collectors: the training loop earns them as it goes).
 Value 1 per unlock: listed by name, not valued in hours (the user's rule for unlocks). Once every unlock is bought,
-chronotes go to the research team (mechanics/archaeology.hand_in credits its offline xp to the training loop)."""
+chronotes go to the research team (mechanics/archaeology.hand_in credits its offline xp to the training loop).
+Research consultants not yet unlocked are listed too: their dig site's mysteries left (not costed: flagged) and the
+Archaeology level they want (costed)."""
 
 from __future__ import annotations
 
 from ... import archaeology_guild as ag
 from ..base import Candidate, Context
+from ..plans import Plan, skill_plan
 
 
 class _ArchaeologyGuild:
@@ -35,6 +38,34 @@ class _ArchaeologyGuild:
                 needs=[f"{need} Archaeology"] if p.level("Archaeology") < need else [],
                 unknowns=[] if known else ["ownership not exported"], skills={"Archaeology"},
             ))
+        out.extend(self._consultants(ctx))
+        return out
+
+    def _consultants(self, ctx: Context) -> list[Candidate]:
+        p = ctx.player
+        hired = ag.unlocked(p)
+        if hired is None:
+            return []
+        out = []
+        for i, (place, need) in ag.CONSULTANTS.items():
+            if i in hired:
+                continue
+            name, speed, cost, perk = ag.RESEARCHERS[i]
+            left = ag.mysteries_left(p, place) or []
+            plan = Plan()
+            if p.level("Archaeology") < need:
+                plan.add(skill_plan(ctx, "Archaeology", need))
+            if left:
+                plan.uncertain = True
+                plan.unknowns.append(f"the {place} mysteries' work isn't costed")
+            details = [f"research consultant: +{speed}% speed, {cost:+}% cost" + (f", {perk}" if perk else "")]
+            details += [f"{place} mystery: {m}" for m in left] + plan.steps
+            out.append(Candidate(
+                track=self.name, title=f"Unlock {name} for the research team", value=1, unit="unlock",
+                cost_hours=plan.net_hours, play_hours=plan.hours, details=details, uncertain=plan.uncertain,
+                why="; ".join(([f"{len(left)} {place} mysteries left"] if left else [])
+                              + ([f"Archaeology {need}"] if p.level("Archaeology") < need else [])),
+                **plan.guide_fields()))
         return out
 
 

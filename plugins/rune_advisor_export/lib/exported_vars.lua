@@ -94,13 +94,15 @@ M.FIELDS = {
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_2", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_3", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_4", 1, "bit" },
-    -- Fairy rings built or repaired before they work (the Kharazi, Lost Grove and Fenmoor rings; Mos Le'Harmless's
-    -- bridge, both halves)
+    -- Fairy rings built or repaired before they work (the Kharazi, Lost Grove, Fenmoor and Ancient Cavern rings, the
+    -- last under its old name; Mos Le'Harmless's bridge, both halves)
     { "FAIRYRING_KHARAZI_UNLOCKED", 1, "bit" },
     { "FAIRYRING_THE_LOST_GROVE_UNLOCKED", 1, "bit" },
     { "FAIRYRING_FENMOOR_UNLOCKED", 1, "bit" },
     { "FT3_MOS_LE_HARMLESS_BRIDGE_1", 1, "bit" },
     { "FT3_MOS_LE_HARMLESS_BRIDGE_2", 1, "bit" },
+    { "FAIRYRINGS_SLAYGUILD_RING", 1, "bit" },
+    { "MAGIC_ADVANCE_TIME_CHARGES_REMAINING", 4, "bit" }, -- Advance Time casts left this week (3 a week)
     -- The Dream of Iaia's skilling stations: whether each is built, and the xp still stored in it
     { "QUEST_EGW_FINALE_REWARD_STATION_STATE_CONSTRUCTION", 1, "bit" },
     { "QUEST_EGW_FINALE_REWARD_STATION_STATE_CRAFTING", 1, "bit" },
@@ -120,6 +122,12 @@ M.FIELDS = {
     { "ARCH_RESTORATION_WORKBENCH_STORAGE_UPGRADE", 2, "bit" },
     { "ARCH_PRECISION_BASE_UPGRADE", 3, "bit" },    -- mattock precision upgrades
     { "ARCH_RELIC_LOADOUT_GUILD_REWARD_SHOP", 1, "bit" }, -- the additional relic loadout
+    -- The research team: which researcher is in each of the five slots (0 = empty; kept between expeditions)
+    { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_1_ID", 6, "bit" },
+    { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_2_ID", 6, "bit" },
+    { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_3_ID", 6, "bit" },
+    { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_4_ID", 6, "bit" },
+    { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_5_ID", 6, "bit" },
     { "ARCH_SKILLING_HAT_UNLOCKED", 1, "bit" },     -- archaeologist's outfit pieces bought (one bit each)
     { "ARCH_SKILLING_BODY_UNLOCKED", 1, "bit" },
     { "ARCH_SKILLING_LEGS_UNLOCKED", 1, "bit" },

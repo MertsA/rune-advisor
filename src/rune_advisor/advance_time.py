@@ -12,7 +12,9 @@ Each target's worth per cast, in training or gathering hours saved:
   * Archaeology research: completes a running research. Counted as a 24-hour run at the best dig site the level allows
     (the wiki's suggestion), its xp as training hours saved, less the chronotes it costs.
   * Player-owned farms, player-owned port voyages, Arc contracts: listed, not valued (not modelled).
-Which casts are already used this week isn't exported: 3 are assumed free.
+The allocation is a weekly rate (the station supply over a plan's weeks uses it). This week's casts left are the
+export's MAGIC_ADVANCE_TIME_CHARGES_REMAINING (plugin 0.5.0; a cast on the beta moved it 3 -> 2, 2026-11-27, with the
+chat line "You have 2 casts of Advance Time remaining this week."): `casts_left`, None on older exports.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 CASTS_PER_WEEK = 3
+CASTS_LEFT_VAR = "MAGIC_ADVANCE_TIME_CHARGES_REMAINING"
 MAGIC_LEVEL = 93
 RUNES = {"Cosmic rune": 15, "Time rune": 20}
 DAY_HOURS = 24
@@ -104,6 +107,12 @@ def _research(ctx) -> Target | None:
     return Target("Archaeology research", xp_hours_saved(ctx, "Archaeology", xp) - cost,
                   f"a 24-hour research run at {site} finished at once ({xp:,.0f} Archaeology xp for "
                   f"{chronotes:,.0f} chronotes)")
+
+
+def casts_left(player) -> int | None:
+    """Casts left this week, or None when the export doesn't say."""
+    v = (getattr(player, "vars", None) or {}).get(CASTS_LEFT_VAR)
+    return min(v, CASTS_PER_WEEK) if isinstance(v, int) and v >= 0 else None
 
 
 def targets(ctx) -> list[Target]:

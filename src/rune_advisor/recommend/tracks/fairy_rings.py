@@ -1,6 +1,6 @@
 """Fairy rings still to build or repair (fairy_rings.py): listed, not valued (the planner doesn't model travel), each
 costed as what the player must do: the mushrooms or planks and nails, the quest it waits on and any level on the way.
-A ring the export can't see (the Ancient Cavern's) is listed as unknown, in case it's already built.
+A ring an older export doesn't carry is listed as unknown, in case it's already built.
 """
 
 from __future__ import annotations

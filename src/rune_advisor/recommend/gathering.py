@@ -392,23 +392,25 @@ class Gatherer:
         for site, info in ag.research_sites(level).items():
             if item in info["materials"]:
                 per_hour, what = ag.RESEARCH_MATERIALS_PER_HOUR / len(info["materials"]), "materials"
+                per_hour *= ag.research_yield_factor(p, "materials")
             elif item in info["artefacts"]:
                 per_hour, what = ag.RESEARCH_ARTEFACTS_PER_HOUR / len(info["artefacts"]), "artefacts"
+                per_hour *= ag.research_yield_factor(p, "artefacts")
             else:
                 continue
             chronotes = self.complete_source("chronotes") if item != "chronotes" else None
             if chronotes is None:
                 continue
-            cost = ag.research_cost(level, info["factor"], self.ctx.player)
-            per_hour *= ag.research_speed(self.ctx.player)
+            cost = ag.research_cost(level, info["factor"], self.ctx.player)  # per research hour, like per_hour
+            speed = ag.research_speed(self.ctx.player)  # research hours per real hour
             why = (f"{ag.RESEARCH_MATERIALS_PER_HOUR:g} materials / {ag.RESEARCH_ARTEFACTS_PER_HOUR:g} artefacts a "
-                   f"research hour assumed")
+                   f"research hour assumed, perks' size assumed")
             # Play time: sending the team out (a claim visit a day's worth) and earning the chronotes it costs.
-            hours = CLAIM_VISIT_HOURS / 24 / per_hour + cost / per_hour * chronotes.cost_per_unit
+            hours = CLAIM_VISIT_HOURS / 24 / (per_hour * speed) + cost / per_hour * chronotes.cost_per_unit
             out.append(Source("daily", f"send the research team to {site} ({cost:,.0f} chronotes an hour; "
                                        f"ASSUMED rate: {why})", hours,
                               xp_per_unit={"Archaeology": ag.research_xp(level, info["factor"], self.ctx.player) / per_hour},
-                              calendar_per_unit=1 / per_hour, passive=True, flag=f"research {what} {why}"))
+                              calendar_per_unit=1 / (per_hour * speed), passive=True, flag=f"research {what} {why}"))
         return out
 
     def _daily_options(self, item: str) -> list[Source]:

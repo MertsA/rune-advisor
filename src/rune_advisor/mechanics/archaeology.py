@@ -377,7 +377,7 @@ def hand_in(player: PlayerState, level: int, restored: dict[str, float], xp: flo
     if chronotes and best and not ag.unlocks_left(player):
         site, info = best
         cost = ag.research_cost(level, info["factor"], player)
-        hours = min(24 / gathering.PLAY_HOURS_PER_DAY, chronotes / cost)
+        hours = min(24 / gathering.PLAY_HOURS_PER_DAY * ag.research_speed(player), chronotes / cost)
         xp += hours * ag.research_xp(level, info["factor"], player)
         chronotes -= hours * cost
         notes.append(f"chronotes fund {hours:.1f}h of {site} research a played hour (offline)")
