@@ -1,6 +1,6 @@
 """Item id -> name map for the export API (data/item_names.json).
 
-    uv run python scripts/build_item_names.py [--db PATH ...] [--lookup]
+    uv run python scripts/build_item_names.py [--db PATH ...] [--lookup] [--client-dump state/items/client_items.json]
 
 The wire protocol sends inventories as item ids only (names are static), so the API server names them from
 this file when it builds a snapshot for the planner. Sources: every archived snapshot's inventories
@@ -9,6 +9,13 @@ this file when it builds a snapshot for the planner. Sources: every archived sna
 export that held new items. `--lookup` names the ids still unknown from the wiki (Special:Lookup redirects an
 item id to its page: "Antique lamp (Elite Ardougne Tasks)", "Super attack (2)"); those rows carry no config
 name and use the wiki's page title, which can be longer than the in-game name.
+
+`--client-dump` fills in every id the file still lacks from a dump of the game client's own item definitions
+(the dev plugin reads config.Obj for each id; the dev bridge's `items-dump` writes it: ~64,000 ids, of which
+~58,000 have a name, ~11,000 of those noted items, "CERT_" configs named like the item). Names already in the file
+win: some are the wiki's page titles on purpose ("Antique lamp (Elite Ardougne Tasks)", "Augmented Death guard (tier
+90)"), which the planner matches. Re-run the dump after a game update that adds items (2026-11-27: until then the
+file held only items the player's own exports had seen, so new items and noted ones arrived as "Unknown item").
 """
 
 from __future__ import annotations
@@ -50,6 +57,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", type=Path, action="append", default=[])
     ap.add_argument("--lookup", action="store_true", help="name the ids still unknown from the wiki")
+    ap.add_argument("--client-dump", type=Path, help="the game client's item definitions (dev bridge items-dump)")
     args = ap.parse_args()
     names: dict[int, dict[str, str]] = {}
     if OUT.exists():
@@ -83,7 +91,15 @@ def main() -> int:
         for snap in plugin_db.snapshots(plugin_db.read_entries(db, settings.export_plugin_id)).values():
             for inv in (snap.get("inventories") or {}).values():
                 take(inv.get("items", []))
-    OUT.write_text(json.dumps({"source": "the player's own plugin exports (item names as the client shows them)",
+    added = 0
+    if args.client_dump:
+        for k, v in json.loads(args.client_dump.read_text())["items"].items():
+            if v.get("name") and int(k) not in names:
+                names[int(k)] = {"name": v["name"], "config": v.get("config") or ""}
+                added += 1
+        print(f"{added} names from the client's item definitions")
+    OUT.write_text(json.dumps({"source": "the game client's item definitions (as the client shows them), the player's "
+                                         "own exports, and wiki page titles where two items share a name",
                                "items": {str(k): names[k] for k in sorted(names)}}, indent=0) + "\n")
     print(f"{OUT}: {len(names)} items from {len(snapshots)} archived snapshots")
     return 0
