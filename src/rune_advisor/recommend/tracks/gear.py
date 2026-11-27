@@ -24,7 +24,7 @@ from __future__ import annotations
 from itertools import combinations
 
 from ... import sim
-from ...drops import boss_kills_per_hour, bosses, estimated_kills_per_hour, sources_of, tables, boss_sim_kills_per_hour, BOSS_OVERHEAD_SECONDS
+from ...drops import TASK_ONLY_DROPS, boss_kills_per_hour, bosses, estimated_kills_per_hour, level_needs, sources_of, tables, boss_sim_kills_per_hour, BOSS_OVERHEAD_SECONDS
 from ...gear import STYLES, _item, best_loadout, damage_score, equipment, owned_equipment
 from .. import gathering
 from ..base import HIGH_ALCH_SECONDS, Candidate, Context, drop_coins_per_kill
@@ -102,26 +102,54 @@ def _kill_rate(ctx: Context, monster: str) -> tuple[float, str, bool] | None:
         sim = boss_sim_kills_per_hour(ctx.player, monster)
         return (sim[0], f"~{sim[0]:.1f} kills/h (combat sim, no guide: {BOSS_OVERHEAD_SECONDS:.0f}s overhead a kill assumed)",
                 False) if sim else None
-    est = estimated_kills_per_hour(ctx.player, monster, ctx.combat_style)
+    est = estimated_kills_per_hour(ctx.player, monster, ctx.combat_style, levels=False)  # levels: costed in _unlocks
     return (est[0], f"~{est[0]:.0f} kills/h (estimated from your {est[1]} rate; spawns and travel not modelled)",
             False) if est else None
 
 
-def _unlocks(ctx: Context, monster: str, items: list[str]) -> Plan:
+CRAFT_BOOST_HOURS = 1 / 60  # how long a boost must hold to make one piece of gear (assumed: a minute)
+
+
+def level_or_boost(ctx: Context, skill: str, level: int, work_hours: float, boostable: bool) -> Plan:
+    """Train to `level`, or (a boostable gate) boost for the `work_hours` of gated work, whichever costs less: a
+    temporary boost to make a primal pickaxe at 98 Smithing (the user did) or to kill a monster above the Slayer level
+    off task. The boost's doses still to make are in its hours (the gatherer's per-unit cost)."""
+    train = skill_plan(ctx, skill, level)
+    if not boostable or ctx.player.level(skill) >= level:
+        return train
+    from ...level_boosts import plan_boost
+
+    boost = plan_boost(ctx.gatherer, skill, level, work_hours)
+    if boost is None or boost.hours >= train.hours:
+        return train
+    return Plan(hours=boost.hours, steps=[f"{boost.steps[0]} for {level} {skill}, instead of training "
+                                          f"(~{train.hours:.1f}h)"], needs=[f"{level} {skill} (boosted)"])
+
+
+def _unlocks(ctx: Context, monster: str, items: list[str], work_hours: float = 0.0) -> Plan:
+    """Levels and quests to get and wear `items` from `monster`: the boss guide's levels and quests, the monster's
+    Slayer level (boostable for the kills, `work_hours` of them, unless a drop only comes on a task) and each item's
+    wear requirements (trained)."""
     plan = Plan()
     boss = boss_kills_per_hour(ctx.player, monster)
     needs: dict[str, int] = {}
+    boostable: dict[str, bool] = {}
     if boss:
         needs.update(boss.row.get("skills") or {})
         for q in boss.row.get("quests") or []:
             if q in ctx.player.quests:
                 plan.add(quest_plan(ctx, q))
+    for s, lvl in level_needs(ctx.player, monster).items():  # the monster's Slayer level, a guide's skills
+        needs[s] = max(needs.get(s, 0), lvl)
+        boostable[s] = not (s == "Slayer" and any(i in TASK_ONLY_DROPS for i in items))
     for name in items:
         for s, lvl in (_item(name).reqs if _item(name) else {}).items():
+            if lvl > needs.get(s, 0):
+                boostable[s] = False  # wearing it: the real level
             needs[s] = max(needs.get(s, 0), lvl)
     for s, lvl in needs.items():
-        s = "Hitpoints" if s == "Constitution" else s
-        plan.add(skill_plan(ctx, s, lvl))
+        s2 = "Hitpoints" if s == "Constitution" else s
+        plan.add(level_or_boost(ctx, s2, lvl, work_hours, boostable.get(s, False) and work_hours > 0))
     return plan
 
 
@@ -169,7 +197,7 @@ def _crafted_gains(ctx: Context) -> dict[str, tuple[str, float]]:
 
 
 def _expand(ctx: Context, item: str, n: float, drops: dict, other: dict, levels: dict, held: dict, cache: dict,
-            depth: int = 0) -> bool:
+            depth: int = 0, boostable: dict | None = None) -> bool:
     """Walk `item`'s recipe chain: dropped inputs (a monster with a kill rate drops them) into `drops`, gear
     made on the way recursed (gear no recipe makes goes to `other`), the rest into `other`, recipe levels into
     `levels`. False when the chain is longer than MAX_CHAIN."""
@@ -188,6 +216,9 @@ def _expand(ctx: Context, item: str, n: float, drops: dict, other: dict, levels:
         return True
     # The recipe that uses a boss drop (the upgrade path), else the first.
     r = next((r for r in recipes if any(_drop_source(ctx, m, cache) for m, _ in r["materials"])), recipes[0])
+    if r["level"] >= levels.get(r["skill"], 0) and boostable is not None:
+        # The recipe data says which skill levels a boost may meet (catalogue `boostable`); the highest recipe decides.
+        boostable[r["skill"]] = r["skill"] in (r.get("boostable") or [])
     levels[r["skill"]] = max(levels.get(r["skill"], 0), r["level"])
     for m, q in r["materials"]:
         need = q * n / (r["output_qty"] or 1)
@@ -197,7 +228,7 @@ def _expand(ctx: Context, item: str, n: float, drops: dict, other: dict, levels:
             if need - take > 0:
                 drops[m] = drops.get(m, 0) + need - take
         elif m in equipment()["items"]:
-            if not _expand(ctx, m, need, drops, other, levels, held, cache, depth + 1):
+            if not _expand(ctx, m, need, drops, other, levels, held, cache, depth + 1, boostable):
                 return False
         else:
             other[m] = other.get(m, 0) + need
@@ -220,8 +251,8 @@ def _drop_source(ctx: Context, item: str, cache: dict) -> tuple[str, float, tupl
 def _crafted(ctx: Context) -> list[Candidate]:
     p, out, cache = ctx.player, [], {}
     for name, (style, gain) in _crafted_gains(ctx).items():
-        drops, other, levels, held = {}, {}, {}, dict(p.holdings)
-        if not _expand(ctx, name, 1, drops, other, levels, held, cache) or not drops:
+        drops, other, levels, held, boostable = {}, {}, {}, dict(p.holdings), {}
+        if not _expand(ctx, name, 1, drops, other, levels, held, cache, boostable=boostable) or not drops:
             continue
         hours, lines, unknowns = 0.0, [], []
         for m, n in drops.items():
@@ -234,7 +265,7 @@ def _crafted(ctx: Context) -> list[Candidate]:
                 unknowns.append("kill rate estimated from gear")
         plan = Plan()
         for s, lvl in levels.items():
-            plan.add(skill_plan(ctx, s, lvl))
+            plan.add(level_or_boost(ctx, s, lvl, CRAFT_BOOST_HOURS, boostable.get(s, False)))
         g = ctx.gatherer.plan({m: int(-(-q // 1)) for m, q in other.items()}) if other else None
         gather_h = (g.hours + g.coins / gathering.COINS_PER_HOUR) if g else 0.0
         if g and g.short:
@@ -312,8 +343,8 @@ def _wanted(ctx: Context) -> list[Candidate]:
     for name in p.wanted_items:
         if name in p.holdings:
             continue
-        drops, other, levels, held = {}, {}, {}, dict(p.holdings)
-        if not _expand(ctx, name, 1, drops, other, levels, held, cache):
+        drops, other, levels, held, boostable = {}, {}, {}, dict(p.holdings), {}
+        if not _expand(ctx, name, 1, drops, other, levels, held, cache, boostable=boostable):
             continue
         hours, lines, unknowns = 0.0, [], []
         for m, n in drops.items():
@@ -326,7 +357,7 @@ def _wanted(ctx: Context) -> list[Candidate]:
                 unknowns.append(f"kill rate at {src}: {rate[1]}")
         plan = Plan()
         for s, lvl in levels.items():
-            plan.add(skill_plan(ctx, s, lvl))
+            plan.add(level_or_boost(ctx, s, lvl, CRAFT_BOOST_HOURS, boostable.get(s, False)))
         g = ctx.gatherer.plan({m: int(-(-q // 1)) for m, q in other.items()}) if other else None
         gather_h = (g.hours + g.coins / gathering.COINS_PER_HOUR) if g else 0.0
         if g and g.short:
@@ -388,7 +419,7 @@ class _Gear:
                 if not names or gain < MIN_GAIN:
                     continue
                 kills = expected_kills([items[n] for n in names])
-                unlocks = _unlocks(ctx, src, names)
+                unlocks = _unlocks(ctx, src, names, kills / kph)
                 supply = SUPPLY_TAX * kills / kph if p.ironman else 0.0  # potions and food, made by hand
                 gross = kills / kph + supply + unlocks.hours
                 saved = upgrade_hours_saved(ctx, target, gain) if target in STYLES else 0.0

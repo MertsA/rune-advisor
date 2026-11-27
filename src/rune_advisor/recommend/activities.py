@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ..cost import row_skills, typical_rate
-from ..drops import drop_chance, estimated_kills_per_hour, kills_per_hour, sources_of, tables
+from ..drops import drop_chance, estimated_kills_per_hour, kills_per_hour, level_needs, sources_of, tables
 
 if TYPE_CHECKING:
     from .base import Context
@@ -41,6 +41,7 @@ class Rate:
     # xp the activity trains while doing it: {skill: xp per hour} (the guide method's skills, or the
     # combat skill of an estimated kill rate). Earned on the way, so it lowers what the activity costs.
     xp_per_hour: dict[str, float] = field(default_factory=dict)
+    needs: dict[str, int] = field(default_factory=dict)  # levels the source still wants (drops.level_needs): costed
 
 
 class Activities:
@@ -67,8 +68,9 @@ class Activities:
     def rate(self, source: str) -> Rate | None:
         if r := self._guide_rates().get(source):
             return r
-        if est := estimated_kills_per_hour(self.ctx.player, source, self.ctx.combat_style):
-            return Rate(source, est[0], "estimated kill rate", {est[1]: est[2]})
+        if est := estimated_kills_per_hour(self.ctx.player, source, self.ctx.combat_style, levels=False):
+            return Rate(source, est[0], "estimated kill rate", {est[1]: est[2]},
+                        needs=level_needs(self.ctx.player, source))
         return None
 
     def item_hours(self, item: str) -> tuple[float, Rate] | None:
@@ -78,7 +80,8 @@ class Activities:
             if not isinstance(chance, (int, float)) or not chance or not (r := self.rate(src)):
                 continue
             hours = 1 / (r.per_hour * min(1.0, chance * qty))
-            if best is None or hours < best[0]:
+            # A source the player can fight now wins over one that wants a level first.
+            if best is None or (bool(r.needs), hours) < (bool(best[1].needs), best[0]):
                 best = (hours, r)
         return best
 

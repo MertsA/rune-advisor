@@ -53,7 +53,8 @@ from typing import TYPE_CHECKING
 from ..cost import row_skills, typical_rate
 from ..boosts import GATHERING_SKILLS, item_multiplier
 from ..drops import (ASSUMED_RATES, CASKETS_PER_HOUR, CHEST_OPEN_HOURS, DAILY_KINDS, EXCLUDED_SOURCES, KEY_CHESTS,
-                     assumed_rate, drop_chance,
+                     TASK_ONLY_DROPS,
+                     assumed_rate, drop_chance, level_needs,
                      estimated_kills_per_hour, kills_per_hour, source_kind, sources_of, tables)
 from .. import claims, currencies, kingdom, respect, traits
 from .. import disassembly as dis
@@ -253,6 +254,7 @@ class Gatherer:
         self._side_xp: dict[str, dict[str, float]] = {}  # method -> other skills' xp per hour
         self._spot_yields: dict[str, dict[str, float]] = {}
         self._spot_info_cache: dict[str, tuple[str, float]] | None = None
+        self._spot_unlock: dict[str, dict[str, int]] = {}  # estimated spot -> levels it still wants (Slayer...)
         self._junk_tier: int | None = None  # gathering spots yielding 2+ items: method -> per hour
         # Spots that are consumable-boost twins (consumables.boosted_rows): method -> what they use up per hour.
         self._consumes: dict[str, dict[str, float]] = {}
@@ -517,14 +519,17 @@ class Gatherer:
                 continue
             self._estimated.add(src)
             spot = f"{src} (estimated kill rate)"
-            est = estimated_kills_per_hour(self.ctx.player, src, self.ctx.combat_style)
+            # A level the source wants (a Slayer level, a boss guide's skills) is costed, not a reason to skip it:
+            # the spot carries it as an unlock (Source.unlock), trained once in a plan that uses it.
+            need = level_needs(self.ctx.player, src)
+            est = estimated_kills_per_hour(self.ctx.player, src, self.ctx.combat_style, levels=False)
             if est is None:
                 # No kill or catch rate: a flagged estimate rather than no source (drops.ASSUMED_RATES).
                 if self._is_item(src) or src in self._modelled_activities() or src in collection_names():
                     # a pack, gift or casket (opened: _container_options); a source a simulated or guide row already
                     # rates (a hotspot: a guess never stands in for real data); an Archaeology collection (handed in)
                     continue
-                if (assumed := assumed_rate(self.ctx.player, src, self.ctx.combat_style)) is None:
+                if (assumed := assumed_rate(self.ctx.player, src, self.ctx.combat_style, levels=False)) is None:
                     continue
                 kph, skill, xph, why = assumed
                 if source_kind(src) in DAILY_KINDS:
@@ -549,6 +554,8 @@ class Gatherer:
                 index.setdefault(name, []).append((spot, skill, per_hour, xph))
             if best:
                 self._spot_info()[spot] = (skill, xph)
+                if need:
+                    self._spot_unlock[spot] = need
 
     def source(self, item: str) -> Source | None:
         """The fastest way to get one more `item` (cached). Complete chains win over ones with unsourced
@@ -615,8 +622,9 @@ class Gatherer:
             hours = self.spot_hours(method)
             if hours == float("inf"):
                 continue
+            need = self._spot_unlock.get(method, {})
             options.append(Source("drop", f"drops at {method}{worded}", hours / per_hour,
-                                  xp_per_unit={skill: rate / per_hour}))
+                                  xp_per_unit={skill: rate / per_hour}, unlock=dict(need)))
         # Simulated from the wiki's Woodcutting/Mining mechanics for this player's levels and tools.
         if (simulated := self._simulated(item)) is not None:
             options.append(simulated)
@@ -877,18 +885,24 @@ class Gatherer:
         return self._training_rate
 
     def _farm_source(self, item: str) -> Source | None:
-        """Grow `item` on herb patches, if a seed for it is plantable at the player's Farming level."""
+        """Grow `item` on herb patches. A seed above the player's Farming level is an option too, with the level as
+        its unlock (trained once in a plan that uses it); a plantable one wins over it."""
         p = self.ctx.player
         best = None
         for seed in seeds():
             patch = next((pt for pt in seed["patch"] if pt in PATCHES or pt in self.ctx.farming), None)
-            if item not in seed["crops"] or patch is None or p.level("Farming") < seed["level"]:
+            if item not in seed["crops"] or patch is None:
                 continue
+            unlock: dict[str, int] = {}
+            if p.level("Farming") < seed["level"]:
+                unlock["Farming"] = seed["level"]
             if (quest := PATCH_QUESTS.get(patch)) and not (p.quests.get(quest) and p.quests[quest].done):
                 continue
             sub = self.source(seed["seed"])
             if sub is None:
                 continue
+            for s, lvl in sub.unlock.items():
+                unlock[s] = max(unlock.get(s, 0), lvl)
             patches, crop, minutes = self.patches(patch, seed)
             harvests = PERENNIAL_HARVESTS if patch in PERENNIAL_PATCHES else 1  # one seed, many harvests
             grow = PERENNIAL_PATCHES.get(patch, seed["grow_minutes"])
@@ -910,8 +924,8 @@ class Gatherer:
             src = Source("farm", f"grow from {seed['seed']}" + (" (patches kept planted)" if kept else ""), per_unit,
                          seed={**seed, "patch_type": patch},
                          xp_per_unit={"Farming": (seed["plant_xp"] / harvests + seed["harvest_xp"] * crop) / crop},
-                         calendar_per_unit=grow / 60 / (patches * crop), passive=kept)
-            if best is None or src.hours_per_unit < best.hours_per_unit:
+                         calendar_per_unit=grow / 60 / (patches * crop), passive=kept, unlock=unlock)
+            if best is None or (bool(src.unlock), src.hours_per_unit) < (bool(best.unlock), best.hours_per_unit):
                 best = src
         return best
 
@@ -1118,6 +1132,8 @@ class Gatherer:
                     if want > held:
                         plant[m] = want - held
                 active = runs * minutes / 60
+                for s, lvl in src.unlock.items():  # a seed above the player's Farming level
+                    g.add_unlock(s, Unlock(lvl, item, active, True))
                 g.hours += active
                 g.calendar_hours += n * src.calendar_per_unit
                 g.add_xp(src.xp_per_unit, n)
@@ -1414,6 +1430,13 @@ class Gatherer:
             got = [f"{min(n, per_hour * hours):,.0f} {i}" + (" (worded rarity: chance assumed)" if (i, m) in self._worded else "")
                    for i, n in needs.items() for mm, _, per_hour, _ in index.get(i, []) if mm == m and per_hour * hours >= 1]
             g.hours += hours
+            # A spot that wants a level first (a monster's Slayer level, a boss guide's skills): trained, or boosted
+            # for the visit, whichever is cheaper (_cost_unlock). A drop that only comes on a Slayer task wants the
+            # real Slayer level (the assignment can't be boosted).
+            here = [i for i in needs if any(mm == m for mm, *_ in index.get(i, []))]
+            for s, lvl in self._spot_unlock.get(m, {}).items():
+                boostable = not (s == "Slayer" and any(i in TASK_ONLY_DROPS for i in here))
+                g.add_unlock(s, Unlock(lvl, ", ".join(here) or m, hours, boostable))
             xp = {skill: rate, **self._side_xp.get(m, {})}
             g.add_xp(xp, hours)
             side = ", ".join(f"+{v * hours:,.0f} {s} xp" for s, v in xp.items())

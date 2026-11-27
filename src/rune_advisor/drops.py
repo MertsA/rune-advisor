@@ -197,7 +197,11 @@ FISH_FARM_POOLS = {"Lobster pool", "Swordfish pool", "Shark pool", "Giant crayfi
 # Chests opened with a key a recipe makes: costed per key (gathering._keyed_chest_options), never at an hourly guess.
 # The Raptor's chest takes a Raptor key, combined from four parts that drop on Slayer tasks (the wiki, 2026-11-27).
 KEY_CHESTS = {"Raptor's chest of slaying": "Raptor key"}
-CHEST_OPEN_HOURS = 1 / 60  # a minute to get there and open it (assumed)
+CHEST_OPEN_HOURS = 1 / 60
+# Drops that only come on a Slayer task: the task's assignment wants the real Slayer level, so a boost (a wild pie)
+# can't stand in for it, unlike killing a monster with a higher Slayer requirement off task (the user, 2026-11-27;
+# the Wild pie page: no assignment above the unboosted level).
+TASK_ONLY_DROPS = frozenset(f"Raptor key part {i}" for i in range(1, 5))  # a minute to get there and open it (assumed)
 DAILY_KINDS = {"npc", "other"}  # drop_source_kinds.json kinds costed as once a day (calendar time, a minute of play)
 ONE_OFF_KINDS = {"quest", "achievement"}  # rewards once: no repeatable source
 # Clue scroll caskets per hour by tier, solving clues the player gets (an estimate; clue sources aren't modelled).
@@ -209,9 +213,11 @@ EXCLUDED_SOURCES = re.compile(r"Treasure Hunter|promotion|Christmas|Santa|Grotto
                               r"Choosedays|Frank's Free Chest", re.I)
 
 
-def assumed_rate(player: PlayerState, source: str, style: tuple[str, float]) -> tuple[float, str, float, str] | None:
+def assumed_rate(player: PlayerState, source: str, style: tuple[str, float],
+                 levels: bool = True) -> tuple[float, str, float, str] | None:
     """(per hour, skill, xp/h, why) for a drop source with no kill or catch rate: a flagged estimate (ASSUMED_RATES),
-    or None where no play gets it (EXCLUDED_SOURCES, a Slayer level the player lacks, free-to-play)."""
+    or None where no play gets it (EXCLUDED_SOURCES, free-to-play, and with `levels` a Slayer or guide level the
+    player lacks; levels=False rates it as if met: the caller costs `level_needs`)."""
     if EXCLUDED_SOURCES.search(source) or source in KEY_CHESTS:
         return None
     skill = style[0]
@@ -235,12 +241,12 @@ def assumed_rate(player: PlayerState, source: str, style: tuple[str, float]) -> 
             key = "chest"  # a chest wants a key or a reset: not a node to hit 60 times an hour
         n, why = ASSUMED_RATES[key]
         return n, skill, 0.0, why
-    if (m.get("members", True) and not player.members) or (m.get("slayer_level") or 0) > player.level("Slayer"):
+    if (m.get("members", True) and not player.members) or (levels and (m.get("slayer_level") or 0) > player.level("Slayer")):
         return None
     xp = m.get("xp") or 0
     if source in bosses() and source in boss_rates():
         guide = boss_kills_per_hour(player, source)
-        if guide is None or not guide.group or _guide_blocked(player, guide.row):
+        if guide is None or not guide.group or _guide_blocked(player, guide.row, levels):
             return None  # levels or quests the guide needs: an unlock, not a missing rate
         n = ASSUMED_RATES["boss"][0]
         return n, skill, n * xp, f"a team boss done solo: {n:g} kills an hour"
@@ -267,10 +273,27 @@ def source_kind(source: str) -> str:
     return "monster" if source in tables()["monsters"] else "other"
 
 
-def _guide_blocked(player: PlayerState, row: dict) -> bool:
-    """A money making guide's levels or quests the player doesn't have yet."""
-    return any(player.level(SKILL_ALIASES.get(sk, sk)) < lvl for sk, lvl in (row.get("skills") or {}).items()) \
+def _guide_blocked(player: PlayerState, row: dict, levels: bool = True) -> bool:
+    """A money making guide's quests the player hasn't done, or (with `levels`) its levels they don't have yet."""
+    return (levels and any(player.level(SKILL_ALIASES.get(sk, sk)) < lvl for sk, lvl in (row.get("skills") or {}).items())) \
         or any(not (q in player.quests and player.quests[q].done) for q in row.get("quests") or [])
+
+
+def level_needs(player: PlayerState, source: str) -> dict[str, int]:
+    """The levels a drop source still wants of the player: the monster's Slayer level, and the skills its boss
+    guide lists (the planner trains them: Source.unlock); empty when nothing is short."""
+    loot = LOOT_TABLE.match(source)
+    name = loot.group(1) if loot else source
+    need: dict[str, int] = {}
+    m = tables()["monsters"].get(name) or {}
+    if (lvl := int(m.get("slayer_level") or 0)) > player.level("Slayer"):
+        need["Slayer"] = lvl
+    if name in bosses() and (guide := boss_kills_per_hour(player, name)) is not None:
+        for sk, lvl in (guide.row.get("skills") or {}).items():
+            sk = SKILL_ALIASES.get(sk, sk)
+            if player.level(sk) < lvl:
+                need[sk] = max(need.get(sk, 0), int(lvl))
+    return need
 
 
 LOOT_TABLE = re.compile(r"^(.+) loot \((story|normal|hard)\)$")
@@ -279,24 +302,25 @@ LOOT_TABLE = re.compile(r"^(.+) loot \((story|normal|hard)\)$")
 WAVE_FINALES = {"TzTok-Jad", "Har-Aken"}
 
 
-def estimated_kills_per_hour(player: PlayerState, monster: str,
-                             style: tuple[str, float]) -> tuple[float, str, float] | None:
+def estimated_kills_per_hour(player: PlayerState, monster: str, style: tuple[str, float],
+                             levels: bool = True) -> tuple[float, str, float] | None:
     """(kills/h, combat skill, xp/h) for killing `monster`, or None if it can't be estimated or the
     player can't fight it (Slayer level, members-only on free-to-play). `style` is the player's best
     combat (skill, xp/h) for a generic spot, from gear.best_style. Bosses go through the combat sim
     (boss_sim_kills_per_hour) when no guide rates them, else at the guide's rate when the player meets its
-    levels and quests and it isn't team content."""
+    levels and quests and it isn't team content. levels=False rates it as if the levels were met (the caller costs
+    `level_needs`); quests still block."""
     if (loot := LOOT_TABLE.match(monster)) is not None:
         # A boss whose loot the wiki tables per mode ("Zemouregal & Vorkath loot (normal)"): the normal mode's
         # table at the boss's own rate; story and hard modes aren't separate rates here.
-        return estimated_kills_per_hour(player, loot.group(1), style) if loot.group(2) == "normal" else None
+        return estimated_kills_per_hour(player, loot.group(1), style, levels) if loot.group(2) == "normal" else None
     if monster in WAVE_FINALES:
         return None
     m = tables()["monsters"].get(monster)
     if monster in bosses():
         if (guide := boss_kills_per_hour(player, monster)) is None:
             return boss_sim_kills_per_hour(player, monster)
-        if guide.group or _guide_blocked(player, guide.row):
+        if guide.group or _guide_blocked(player, guide.row, levels):
             return None
         from .gear import STYLES
         return guide.kills_per_hour, STYLES[guide.style], guide.kills_per_hour * ((m or {}).get("xp") or 0)
@@ -304,7 +328,7 @@ def estimated_kills_per_hour(player: PlayerState, monster: str,
         return None
     if monster in unfarmable():
         return None
-    if (m.get("slayer_level") or 0) > player.level("Slayer") or (m.get("members", True) and not player.members):
+    if (levels and (m.get("slayer_level") or 0) > player.level("Slayer")) or (m.get("members", True) and not player.members):
         return None
     from .gear import STYLES
     from .mechanics import combat

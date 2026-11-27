@@ -429,11 +429,19 @@ def item_plan(ctx: Context, item: str, qty: int = 1, gather: bool = True) -> Pla
     if found := ctx.activities.item_hours(item):
         per_drop, r = found
         hours = per_drop * qty
-        return Plan(hours=hours, reward_hours=activity_xp_hours(ctx, r, hours), skills=set(r.xp_per_hour),
-                    needs=[f"{desc} from {r.source} (~{hours:.1f}h)"],
-                    unknowns=["kill rate estimated from gear"] if r.how.startswith("estimated") else [],
-                    steps=[f"get {desc} as a drop: ~{hours:.1f}h at {r.how} ({r.source})"])
+        return _with_levels(ctx, r, Plan(
+            hours=hours, reward_hours=activity_xp_hours(ctx, r, hours), skills=set(r.xp_per_hour),
+            needs=[f"{desc} from {r.source} (~{hours:.1f}h)"],
+            unknowns=["kill rate estimated from gear"] if r.how.startswith("estimated") else [],
+            steps=[f"get {desc} as a drop: ~{hours:.1f}h at {r.how} ({r.source})"]))
     return None
+
+
+def _with_levels(ctx: Context, r, plan: Plan) -> Plan:
+    """An activity plan plus the levels its source still wants (a monster's Slayer level...), trained first."""
+    for skill, level in getattr(r, "needs", {}).items():
+        plan.add(skill_plan(ctx, skill, level))
+    return plan
 
 
 def tally_plan(ctx: Context, name: str, t: dict, many: bool = False) -> Plan:
@@ -459,10 +467,11 @@ def tally_plan(ctx: Context, name: str, t: dict, many: bool = False) -> Plan:
     wiki_desc = ctx.achievement_descriptions.get(name, "")
     if total > 1 and wiki_desc and (r := acts.source_in(wiki_desc)):
         hours = remaining / r.per_hour
-        return Plan(hours=hours, reward_hours=activity_xp_hours(ctx, r, hours), skills=set(r.xp_per_hour),
-                    needs=[f"{remaining:,} more at {r.source} (~{hours:.1f}h)"],
-                    unknowns=["kill rate estimated from gear"] if r.how.startswith("estimated") else [],
-                    steps=[f"{remaining:,} more at {r.source} (~{r.per_hour:,.0f}/h via {r.how}, ~{hours:.1f}h)"])
+        return _with_levels(ctx, r, Plan(
+            hours=hours, reward_hours=activity_xp_hours(ctx, r, hours), skills=set(r.xp_per_hour),
+            needs=[f"{remaining:,} more at {r.source} (~{hours:.1f}h)"],
+            unknowns=["kill rate estimated from gear"] if r.how.startswith("estimated") else [],
+            steps=[f"{remaining:,} more at {r.source} (~{r.per_hour:,.0f}/h via {r.how}, ~{hours:.1f}h)"]))
     if many and total <= 1:
         hours, how = LIST_ITEM_HOURS, "list entry"
     elif total > 1:

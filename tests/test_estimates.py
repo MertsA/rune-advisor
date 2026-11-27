@@ -264,3 +264,45 @@ def test_keyed_chests_and_dnd_cadence():
     # D&Ds come round on their own reset, not once a day: the Giant Oyster is monthly.
     assert _dnd_period_days("Giant Oyster") == 30 and _dnd_period_days("Herby Werby") == 7
     assert _dnd_period_days("Sensei Hakase") is None
+
+
+def test_missing_levels_are_costed_not_skipped():
+    from rune_advisor import drops
+    from rune_advisor.models import PlayerState, Skill
+
+    p = PlayerState(name="x", skills={"Slayer": Skill("Slayer", 95, 9_140_782)})
+    # Wyverns need Slayer 96: no kill rate with the gate, a rate plus the level to train without it.
+    assert drops.level_needs(p, "Wyvern") == {"Slayer": 96}
+    assert drops.estimated_kills_per_hour(p, "Wyvern", ("Ranged", 500_000.0)) is None
+    assert drops.estimated_kills_per_hour(p, "Wyvern", ("Ranged", 500_000.0), levels=False) is not None
+    p.skills["Slayer"] = Skill("Slayer", 96, 9_684_577)
+    assert drops.level_needs(p, "Wyvern") == {}
+
+
+def test_slayer_boosts_and_task_only_drops():
+    from rune_advisor import drops, level_boosts
+
+    slayer = {b["label"]: b for b in level_boosts.boosts() if "Slayer" in b["skills"]}
+    assert slayer["Wild pie (Slayer +5)"]["flat"] == 5 and not slayer["Wild pie (Slayer +5)"]["static"]
+    assert slayer["Wilder pie (Slayer +6, held 6 minutes)"]["minutes"] == 6
+    # Raptor key parts drop only on a task, whose assignment wants the real level: no boost stands in for it.
+    assert "Raptor key part 4" in drops.TASK_ONLY_DROPS
+
+
+def test_gear_track_boosts_a_boostable_gate(monkeypatch):
+    """Gear behind a boostable level (the user made a primal pickaxe at 98 Smithing on a boost) costs the cheaper of
+    training and boosting; a gate that can't be boosted (wearing it, a task-only drop) is trained."""
+    from types import SimpleNamespace
+    from rune_advisor import level_boosts
+    from rune_advisor.models import PlayerState, Skill
+    from rune_advisor.recommend import plans
+    from rune_advisor.recommend.tracks import gear
+
+    p = PlayerState(name="x", skills={"Smithing": Skill("Smithing", 98, 11_805_606)})
+    ctx = SimpleNamespace(player=p, gatherer=None)
+    monkeypatch.setattr(gear, "skill_plan", lambda ctx, s, lvl: plans.Plan(hours=20.0, steps=[f"train {s} to {lvl}"]))
+    boost = level_boosts.BoostPlan("Super smithing potion", 102, 1, "Super smithing potion (4)", 1, 0.01, 0.0,
+                                   ["boost Smithing to 102 with a super smithing potion"])
+    monkeypatch.setattr(level_boosts, "plan_boost", lambda g, s, lvl, hours: boost)
+    assert gear.level_or_boost(ctx, "Smithing", 100, gear.CRAFT_BOOST_HOURS, True).hours == 0.01
+    assert gear.level_or_boost(ctx, "Smithing", 100, gear.CRAFT_BOOST_HOURS, False).hours == 20.0

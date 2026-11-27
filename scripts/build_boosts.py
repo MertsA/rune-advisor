@@ -8,7 +8,9 @@ minute). Random boosts ("up to", spicy stews, pulse cores), reductions and invis
 rows whose level increase isn't a plain formula. God banners (a daily +2 to one non-combat skill for 30 minutes)
 and the Extreme invention potion (a level per 150,000 Invention xp, up to +17: the elite-skill extreme boost
 table; the row carries the cap, `xp_per_level` says how it scales; unlike other skilling potions it holds the full
-boost for 6 minutes a dose and then resets, so it is `static` with `minutes`) are added by hand.
+boost for 6 minutes a dose and then resets, so it is `static` with `minutes`) are added by hand, as are the wild
+and wilder pies (their rows raise Slayer and Ranged by different amounts, which the formula parser can't read; the
+pies' own pages: wild pie Slayer +5 / Ranged +4, wilder pie Slayer +6 held 6 minutes / Ranged +5; one row per skill).
 
 Source: RuneScape Wiki, Temporary skill boost (https://runescape.wiki, CC BY-NC-SA 3.0).
 """
@@ -64,6 +66,51 @@ def rows(page: str) -> list[list[str]]:
     return out
 
 
+PIES = [
+    {
+        "name": "Wild pie",
+        "label": "Wild pie (Slayer +5)",
+        "skills": [
+            "Slayer"
+        ],
+        "flat": 5,
+        "percent": 0.0,
+        "static": False
+    },
+    {
+        "name": "Wild pie",
+        "label": "Wild pie (Ranged +4)",
+        "skills": [
+            "Ranged"
+        ],
+        "flat": 4,
+        "percent": 0.0,
+        "static": False
+    },
+    {
+        "name": "Wilder pie",
+        "label": "Wilder pie (Slayer +6, held 6 minutes)",
+        "skills": [
+            "Slayer"
+        ],
+        "flat": 6,
+        "percent": 0.0,
+        "static": True,
+        "minutes": 6
+    },
+    {
+        "name": "Wilder pie",
+        "label": "Wilder pie (Ranged +5)",
+        "skills": [
+            "Ranged"
+        ],
+        "flat": 5,
+        "percent": 0.0,
+        "static": False
+    }
+]
+
+
 def main() -> None:
     page = page_source(CachedClient(), "Temporary skill boost")
     boosts = []
@@ -85,6 +132,7 @@ def main() -> None:
     boosts.append({"name": "God banner", "label": "God banner powerup (daily, 30 minutes)",
                    "skills": [_skill(s) for s in BANNER_SKILLS], "flat": 2, "percent": 0.0, "static": True,
                    "daily_minutes": 30})
+    boosts += PIES
     OUT.write_text(json.dumps({"source": "https://runescape.wiki/w/Temporary_skill_boost (CC BY-NC-SA 3.0)",
                                "boosts": boosts}, indent=1))
     print(f"wrote {len(boosts)} boosts to {OUT}")
