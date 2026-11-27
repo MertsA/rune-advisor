@@ -286,8 +286,14 @@ class CostModel:
             capped = [(r, why) for r in rows if (why := limited_activity(r))]
             rows = [r for r in rows if not limited_activity(r)]
             if player is not None:
+                from . import fort
+
                 kept = []
                 for r in rows:
+                    r, why = fort.adjust_row(r, player)  # the guide's tier 3 Chapel rows at the player's Chapel tier
+                    if r is None:
+                        excluded.append(("Prayer", "Fort Forinthry chapel", [why]))
+                        continue
                     if missing := requirements.unmet(r.get("requirements"), player, tuple(row_skills(r))):
                         excluded.append((r["skill"], r["method"], missing))
                     elif getattr(player, "ironman", False) and (th := requirements.th_only_items(r.get("requirements"))

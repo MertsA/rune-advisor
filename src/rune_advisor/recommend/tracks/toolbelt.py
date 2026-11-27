@@ -6,7 +6,7 @@ missing when the var whose words all appear in its name ("TOOLBELT_LOCKPICK" -> 
 is 0. Items with no matching var aren't offered (we can't tell if they're owned).
 
 Cost: level requirements and quests from the wiki note, plus reward-shop currency at CURRENCY_RATES
-(the cheapest listed shop with a known rate). Currency balances aren't exported (pilfer points, tokens),
+(the cheapest listed shop with a known rate). Exported currency balances (pilfer points, tokens) are netted off,
 so purchases are costed from zero and flagged. Earning the currency trains a skill; that's the overlap
 focus mode shows (Safecracking: pilfer points and Thieving outfit fragments at once).
 """
@@ -50,6 +50,12 @@ def _currency_key(name: str) -> str:
     return name.lower().removesuffix("s")
 
 
+def _balance(ctx: Context, currency: str) -> int | None:
+    """The exported balance of a currency, whatever the spelling ("pilfer points" = "Pilfer points")."""
+    key = _currency_key(currency)
+    return next((n for name, n in ctx.player.currencies.items() if _currency_key(name) == key), None)
+
+
 def belt_vars(vars: dict) -> dict[str, list[str]]:
     """{tool belt item: the TOOLBELT_* vars naming it} for items with exactly-matching vars."""
     out: dict[str, list[str]] = {}
@@ -89,7 +95,7 @@ def unlock_plan(ctx: Context, item: str) -> tuple[Plan, list[str]]:
             continue
         hours, p, skill, activity = p
         what = "the belt unlock" if p.get("unlock") else item
-        balance = ctx.player.currencies.get(p["currency"])
+        balance = _balance(ctx, p["currency"])
         if balance is not None and balance >= p["cost"]:  # the export shows enough in hand
             plan.add(Plan(hours=0.0, needs=[f"spend {p['cost']:,} {p['currency']} (you have {balance:,})"],
                           steps=[f"spend {p['cost']:,} {p['currency']} on {what} (you have {balance:,})"]))
@@ -136,7 +142,7 @@ def currency_unlocks(ctx: Context) -> list[tuple[str, str, str, float]]:
         for p in purchases:
             if rate := CURRENCY_RATES.get(_currency_key(p["currency"])):
                 skill, activity, per_hour = rate
-                short = max(0, p["cost"] - ctx.player.currencies.get(p["currency"], 0))
+                short = max(0, p["cost"] - (_balance(ctx, p["currency"]) or 0))
                 if short:  # a balance covering it needs no earning
                     out.append((item, skill, f"{short:,} {p['currency']} from {activity}", short / max(1.0, per_hour(ctx))))
     return out

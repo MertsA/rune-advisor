@@ -78,3 +78,20 @@ def test_passive_supplies_scale_with_play_per_day(monkeypatch):
     assert ctx.gatherer.window_days(10) == pytest.approx(5)
     ctx.play_elapsed = 10  # earlier goals of a joint plan
     assert ctx.gatherer.window_days(10) == pytest.approx(10)
+
+
+def test_exported_coffers_pay_first_and_the_profile_note():
+    """MISC_COFFERS (0.5.0) is pay already deposited: its subject-days cost no new coins."""
+    p = _player()
+    p.vars = {"MISC_COFFERS": 197_668, "MISC_APPROVAL": 107, "MISC_POINTS_FISH": 10, "MISC_POINTS_HERB": 5,
+              "MISC_HERBS_OR_FLAX": 0, "MISC_COOKED": 0}
+    led = kingdom.Ledger(p, days=28)
+    assert led.prepaid == pytest.approx(197_668 / 5_000)
+    new, old = led.pay(30)
+    assert new == 0 and old == pytest.approx(150_000)
+    new, old = led.pay(20)
+    assert old == pytest.approx(47_668) and new == pytest.approx(100_000 - 47_668)
+    note = kingdom.note(p)
+    assert note.startswith("Miscellania: approval 84%, coffers 197,668 gp") and "10 fishing (raw), 5 herbs (herbs)" in note
+    assert "top it up" in note
+    assert kingdom.note(_player()) is None  # nothing exported

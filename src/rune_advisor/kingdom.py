@@ -12,6 +12,11 @@ daily figures are 10 subjects at 100% approval and full pay with Royal Trouble; 
 
 Assumed: approval kept near 100% (a visit a week, or the Fort's Command Centre table), hardwood and the farm need
 Royal Trouble (they are Etceteria's), and the by-products (gems, nests, caskets, herb seeds) aren't counted.
+
+From the export (plugin 0.5.0; beta 2026-11-26): the coffers (MISC_COFFERS, gp) are pay already deposited, so their
+subject-days cost no new coins (`Ledger.pay`); approval (MISC_APPROVAL, of 127: 107 showed as 84%), each category's
+subjects (MISC_POINTS_<category>) and its setting (MISC_HERBS_OR_FLAX 0 = herbs, MISC_COOKED 0 = raw; the hardwood
+setting's encoding is unknown) are shown in the profile (`note`): plans choose their own split.
 """
 
 from __future__ import annotations
@@ -90,6 +95,37 @@ def settings_for(player: PlayerState, item: str) -> list[tuple[str, str, float]]
     return sorted(out, key=lambda t: -t[2])
 
 
+COFFERS_VAR, APPROVAL_VAR, APPROVAL_MAX = "MISC_COFFERS", "MISC_APPROVAL", 127
+WORKER_VARS = {"wood": "MISC_POINTS_WOOD", "mining": "MISC_POINTS_MINE", "fishing": "MISC_POINTS_FISH",
+               "herbs": "MISC_POINTS_HERB", "hardwood": "MISC_POINTS_RAREWOOD", "farm": "MISC_POINTS_FARM"}
+
+
+def _var(player: PlayerState, name: str) -> int | None:
+    value = (getattr(player, "vars", None) or {}).get(name)
+    return value if isinstance(value, int) and value >= 0 else None
+
+
+def coffers(player: PlayerState) -> int | None:
+    return _var(player, COFFERS_VAR)
+
+
+def note(player: PlayerState) -> str | None:
+    """The kingdom as the export shows it, for the profile."""
+    if not managed(player) or (approval := _var(player, APPROVAL_VAR)) is None:
+        return None
+    setting = {"herbs": "flax" if _var(player, "MISC_HERBS_OR_FLAX") else "herbs",
+               "fishing": "cooked" if _var(player, "MISC_COOKED") else "raw"}
+    workers = ", ".join(f"{n} {c}" + (f" ({setting[c]})" if c in setting else "")
+                        for c, v in WORKER_VARS.items() if (n := _var(player, v)))
+    gp = coffers(player) or 0
+    pct = approval / APPROVAL_MAX
+    text = (f"Miscellania: approval {pct:.0%}, coffers {gp:,} gp (~{gp / COINS_PER_SUBJECT_DAY:,.0f} subject-days of "
+            f"pay, used first), subjects: {workers or 'none assigned'}")
+    if pct < 0.95:
+        text += "; plans assume approval near 100%: top it up"
+    return text
+
+
 def items() -> frozenset[str]:
     return frozenset(i for settings in CATEGORIES.values() for items in settings.values() for i in items)
 
@@ -104,15 +140,25 @@ class Ledger:
         self.alloc: dict[tuple[str, str], float] = {}
         self.passive: dict[str, float] = {}  # other passive supplies (weekly claims, kept-planted patches): units drawn
         self.drawn: dict[tuple[str, str, str], float] = {}
+        # Subject-days the exported coffers already pay for, less what bookings have used.
+        self.prepaid = (coffers(player) or 0) / COINS_PER_SUBJECT_DAY
 
     def copy(self) -> Ledger:
         out = Ledger(self.player, self.days)
         out.alloc, out.drawn, out.passive = dict(self.alloc), dict(self.drawn), dict(self.passive)
+        out.prepaid = self.prepaid
         return out
 
     def adopt(self, other: Ledger) -> None:
         """Take on another ledger's bookings (a plan's working copy, once the plan is kept)."""
         self.alloc, self.drawn, self.passive = dict(other.alloc), dict(other.drawn), dict(other.passive)
+        self.prepaid = other.prepaid
+
+    def pay(self, days: float) -> tuple[float, float]:
+        """(new coins, coffers coins) for `days` of new subject-days: the coffers' pay first."""
+        from_coffers = min(days, self.prepaid)
+        self.prepaid -= from_coffers
+        return (days - from_coffers) * COINS_PER_SUBJECT_DAY, from_coffers * COINS_PER_SUBJECT_DAY
 
     def capacity(self, item: str, category: str, setting: str, days: float | None = None) -> float:
         """How many of `item` this setting can still bring in: partner subject-days already paid, then free subjects."""

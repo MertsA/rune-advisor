@@ -399,14 +399,15 @@ class Gatherer:
             chronotes = self.complete_source("chronotes") if item != "chronotes" else None
             if chronotes is None:
                 continue
-            cost = ag.research_cost(level, info["factor"])
+            cost = ag.research_cost(level, info["factor"], self.ctx.player)
+            per_hour *= ag.research_speed(self.ctx.player)
             why = (f"{ag.RESEARCH_MATERIALS_PER_HOUR:g} materials / {ag.RESEARCH_ARTEFACTS_PER_HOUR:g} artefacts a "
                    f"research hour assumed")
             # Play time: sending the team out (a claim visit a day's worth) and earning the chronotes it costs.
             hours = CLAIM_VISIT_HOURS / 24 / per_hour + cost / per_hour * chronotes.cost_per_unit
             out.append(Source("daily", f"send the research team to {site} ({cost:,.0f} chronotes an hour; "
                                        f"ASSUMED rate: {why})", hours,
-                              xp_per_unit={"Archaeology": ag.research_xp(level, info["factor"]) / per_hour},
+                              xp_per_unit={"Archaeology": ag.research_xp(level, info["factor"], self.ctx.player) / per_hour},
                               calendar_per_unit=1 / per_hour, passive=True, flag=f"research {what} {why}"))
         return out
 
@@ -1182,7 +1183,7 @@ class Gatherer:
         got = math.floor(free + new + 1e-6)
         if got <= 0:
             return n
-        coins = days * kingdom.COINS_PER_SUBJECT_DAY
+        coins, prepaid = self._kingdom.pay(days)
         g.hours += days / kingdom.SUBJECTS_PER_CATEGORY * kingdom.VISIT_HOURS_PER_DAY
         g.coins += coins
         g.calendar_hours += days / kingdom.SUBJECTS_PER_CATEGORY * 24
@@ -1191,7 +1192,8 @@ class Gatherer:
             parts.append(f"{free:,.0f} with the {category} subjects already paid")
         if new >= 1:
             parts.append(f"{new:,.0f} from ~{days:,.0f} subject-days (~{days / kingdom.SUBJECTS_PER_CATEGORY:,.0f} "
-                         f"days at 10 subjects, ~{coins:,.0f} gp of pay from the coffers)")
+                         f"days at 10 subjects, ~{coins + prepaid:,.0f} gp of pay from the coffers"
+                         + (f", {prepaid:,.0f} of it already in them)" if prepaid >= 1 else ")"))
         g.steps.append(f"get {got:,} {item}: Managing Miscellania ({category}, {setting}): {'; '.join(parts)}")
         return n - got
 

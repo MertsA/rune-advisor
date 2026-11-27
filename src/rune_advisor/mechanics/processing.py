@@ -147,8 +147,19 @@ def effective(player: PlayerState, recipe: dict, for_xp: bool = True) -> dict:
     if p.xp_bonus:
         xp_mult += p.xp_bonus
         notes += p.notes
+    from .. import fort
+
+    fort_xp, fort_out, fort_mats, fort_burn, fort_notes = fort.recipe_perks(player, r)
+    if fort_notes:
+        xp_mult += fort_xp  # added to base experience, like an outfit
+        out_mult *= fort_out
+        if fort_out > 1:
+            xp_mult *= fort_out  # the extra ammunition gives its full experience
+        notes += fort_notes
     if skill == "Cooking":
         success = cooking_success(player, r)
+        if success < 1 and fort_burn < 1:
+            success = 1 - (1 - success) * fort_burn
         if success < 1:
             xp_mult *= success
             out_mult *= success
@@ -168,6 +179,8 @@ def effective(player: PlayerState, recipe: dict, for_xp: bool = True) -> dict:
             notes.append(f"+{double:.1%} double bars")
     from .. import traits
     mats, ticks = traits.materials(player, r), traits.ticks(player, r)
+    if fort_mats < 1:
+        mats = [[m, q * fort_mats] for m, q in (mats if mats is not None else r["materials"])]
     if mats is not None or ticks is not None:
         notes.append("Dungeoneering scroll")
     if xp_mult == 1 and out_mult == 1 and not notes:

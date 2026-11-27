@@ -539,7 +539,9 @@ def test_exporter_end_to_end_plan(tmp_path, monkeypatch):
     assert p.inventories["CRAMULET"] == {"Camulet": 1}
     assert p.last_rock_skill == {"strange": "Herblore", "golden": "Smithing"}
     assert any(n.startswith("statue rocks: the next rock is half as likely in Herblore, Smithing (") for n in p.notes)
-    assert p.currencies == {"Slayer points": 700} and p.campfire_tier == "elder"  # 610 -> 700 in run_wire.lua
+    assert p.currencies == {"Slayer points": 700, "Dungeoneering tokens": 316_448,  # Slayer 610 -> 700 in run_wire.lua
+                            "Reaper points": 264}
+    assert p.inventories["CURRENCIES"]["Dungeoneering tokens"] == 316_448 and p.campfire_tier == "elder"
     assert p.bonus_xp == {"Attack": 2500} and any(n.startswith("bonus xp read from BONUSXP_") for n in p.notes)  # var in tenths
     assert p.holdings["Huge XP lamp"] == 13 and p.holdings["Astral rune"] == 50 and p.holdings["Logs"] == 125
     assert "Coins" not in p.holdings
@@ -4152,11 +4154,19 @@ def test_blessings_of_the_wolf_thresholds():
 
     def player(done):
         reqs = [{"description": name, "complete": name in done} for name in blessings.THRESHOLDS]
-        return SimpleNamespace(achievements={blessings.ACHIEVEMENT: SimpleNamespace(completed=False, requirements=reqs)})
+        return SimpleNamespace(achievements={blessings.ACHIEVEMENT: SimpleNamespace(completed=False, requirements=reqs)},
+                               vars={})
 
     assert blessings.known_blessings(player(())) == 0
     assert blessings.known_blessings(player(("Shaman's headdress", "Shaman's poncho"))) == 1200
-    assert blessings.known_blessings(SimpleNamespace(achievements={})) == 0
+    assert blessings.known_blessings(SimpleNamespace(achievements={}, vars={})) == 0
+    # The export's balance (plugin 0.5.0) wins over the unlock proof; a lower one keeps the proof.
+    exported = player(())
+    exported.vars[blessings.VAR] = 347
+    assert blessings.known_blessings(exported) == 347
+    spent = player(("Shaman's headdress",))
+    spent.vars[blessings.VAR] = 100
+    assert blessings.known_blessings(spent) == 600 and blessings.exported_blessings(spent) == 100
     assert blessings.next_unlock(0) == ("Shaman's headdress", 600)
     assert blessings.next_unlock(1200) == ("Shaman's leggings", 600)
     assert blessings.next_unlock(4200) == ("'the Spirit Wolf' title", 800) and blessings.next_unlock(5000) is None
@@ -4205,6 +4215,9 @@ def test_artisans_respect_prices_and_xp():
         "Work on Your Artisan": SimpleNamespace(completed=False, requirements=reqs),
         "Work on Your Artisan II": SimpleNamespace(completed=True, requirements=[{"description": "Necturion Outfit"}])})
     assert respect.open_rewards(p) == {"Golden Cannon": 50, "Royale Cannon": 100}
+    # The export's ARTISAN_RESPECT is in thousandths of a percent (17,556 showed as 17% on the beta).
+    assert respect.held(SimpleNamespace(vars={"ARTISAN_RESPECT": 17_556})) == pytest.approx(17.556)
+    assert respect.held(SimpleNamespace(vars={})) is None
 
 
 def _learn(service, owner, full, target):
@@ -5134,3 +5147,28 @@ def test_tool_belt_tools_and_slayer_task_come_from_the_export():
         <= {x["label"] for x in sim.data()["picks"]}
     assert {players.belt_tools({"TOOLBELT_HATCHET_LEVEL": int(v)})["hatchet"] for v in values["TOOLBELT_HATCHET_LEVEL"]} \
         <= {x["label"] for x in sim.data()["hatchets"]}
+
+
+def test_rested_xp_cap_follows_the_town_hall_tier():
+    """PLAYER_FORT_BUILDING_TOWNHALL is the tier (3 on a fully built fort, beta 2026-11-26); without it the
+    lowest cap is assumed, so 500 rested xp may already be full."""
+    from rune_advisor.resources import load_pool, rested_cap
+
+    assert rested_cap(PlayerState(name="x")) == 500
+    assert rested_cap(PlayerState(name="x", vars={"PLAYER_FORT_BUILDING_TOWNHALL": 3})) == 1_500
+    unknown = load_pool(PlayerState(name="x", rested_xp=800))
+    tier3 = load_pool(PlayerState(name="x", rested_xp=800, vars={"PLAYER_FORT_BUILDING_TOWNHALL": 3}))
+    assert [r.spend_first for r in unknown.resources if r.name == "rested xp"] == [True]
+    assert [r.spend_first for r in tier3.resources if r.name == "rested xp"] == [False]
+
+
+def test_toolbelt_balance_matches_any_spelling():
+    """The toolbelt data says "pilfer points" / "Dungeoneering token"; the export's balances are "Pilfer points" /
+    "Dungeoneering tokens"."""
+    from types import SimpleNamespace
+
+    from rune_advisor.recommend.tracks.toolbelt import _balance
+
+    ctx = SimpleNamespace(player=SimpleNamespace(currencies={"Pilfer points": 1_078, "Dungeoneering tokens": 306_448}))
+    assert _balance(ctx, "pilfer points") == 1_078 and _balance(ctx, "Dungeoneering token") == 306_448
+    assert _balance(ctx, "thaler") is None

@@ -489,14 +489,26 @@ def respect_plan(ctx: Context, reward: str) -> Plan:
     """One Artisans' Workshop reward: its respect as Smithing xp earned at the workshop's anvils (respect.py). The
     xp is training the player keeps, so it comes off as earned xp."""
     p = ctx.player
-    percent = respect.PRICES[reward]
+    price = respect.PRICES[reward]
+    have = respect.held(p)
+    # The balance is one pot for every open reward: each plan takes it off its own price (like currency balances).
+    percent = max(0.0, price - (have or 0.0))
     xp = respect.xp_for(p, percent)
     hours = xp / max(1.0, ctx.cost.rate("Smithing", p.level("Smithing")))
     shield = f" ({respect.SHIELD} worn: +5%)" if respect.bonus(p) > 1 else ""
-    return Plan(hours=hours, reward_hours=xp_hours_saved(ctx, "Smithing", xp), skills={"Smithing"}, uncertain=True,
-                needs=[f"{reward}: {percent}% Artisans' Workshop respect (~{hours:.1f}h of smithing there)"],
-                unknowns=["respect held isn't exported: counted from 0; it caps at 100%, so spend it as it fills"],
-                steps=[f"{reward}: {percent}% respect = {xp:,.0f} Smithing xp from equipment finished at the "
+    if have is None:
+        unknowns = ["respect held isn't exported: counted from 0; it caps at 100%, so spend it as it fills"]
+        held_note = ""
+    else:
+        unknowns = []
+        held_note = f", {min(have, price):g}% of it held"
+    if percent <= 0:
+        return Plan(hours=0.0, skills={"Smithing"}, needs=[f"{reward}: buy it from Egil ({price}% respect, held)"],
+                    steps=[f"{reward}: buy it from Egil for {price}% respect (you hold {have:g}%)"])
+    return Plan(hours=hours, reward_hours=xp_hours_saved(ctx, "Smithing", xp), skills={"Smithing"},
+                uncertain=have is None, needs=[f"{reward}: {price}% Artisans' Workshop respect{held_note} (~{hours:.1f}h of smithing there)"],
+                unknowns=unknowns,
+                steps=[f"{reward}: {percent:g}% more respect = {xp:,.0f} Smithing xp from equipment finished at the "
                        f"Artisans' Workshop anvils{shield}, then buy it from Egil"])
 
 
@@ -507,7 +519,16 @@ def blessings_plan(ctx: Context) -> Plan:
     left = blessings.TOTAL - have
     pouch = blessings.cheapest_pouch(ctx)
     nxt = blessings.next_unlock(have)
-    unknowns = ["the Blessings balance isn't exported: counted from the last reward unlocked (up to 599 more held)"]
+    exported = blessings.exported_blessings(ctx.player)
+    if exported is None:
+        unknowns = ["the Blessings balance isn't exported: counted from the last reward unlocked (up to 599 more held)"]
+    elif exported < blessings.proven_blessings(ctx.player):
+        unknowns = [f"the exported Blessings ({exported:,}) are below an unlocked reward's threshold: rewards may "
+                    "spend them, which this plan doesn't model"]
+    else:
+        unknowns = []
+    if left <= 0:
+        return Plan()
     if pouch is None:
         hours = left * DEFAULT_SECONDS_PER_TALLY_UNIT / 3600
         return Plan(hours=hours, guessed_hours=hours, uncertain=True, skills={"Summoning"},
@@ -517,12 +538,12 @@ def blessings_plan(ctx: Context) -> Plan:
     hours = left * each
     need = f"{left:,} more pouches infused at the Shrine of Inanna (~{hours:.1f}h as {name})"
     steps = [f"infuse {left:,} more pouches at the Shrine of Inanna's empowered obelisk for {left:,} Blessings of the "
-             f"Wolf ({have:,} of {blessings.TOTAL:,} proven): cheapest is {name}, ~{each * 60:.2f} min each with its "
+             f"Wolf ({have:,} of {blessings.TOTAL:,} {'held' if exported is not None else 'proven'}): cheapest is {name}, ~{each * 60:.2f} min each with its "
              "materials, after swapping the pouches back for 70% of their shards",
              "any pouch infused there counts: Summoning training and pouches made to disassemble too"]
     if nxt:
         steps.append(f"next unlock: {nxt[0]} in {nxt[1]:,} pouches")
-    return Plan(hours=hours, uncertain=True, skills={"Summoning"}, needs=[need], unknowns=unknowns, steps=steps)
+    return Plan(hours=hours, uncertain=bool(unknowns), skills={"Summoning"}, needs=[need], unknowns=unknowns, steps=steps)
 
 
 def achievement_plan(ctx: Context, name: str, _seen: set[str] | None = None) -> Plan:

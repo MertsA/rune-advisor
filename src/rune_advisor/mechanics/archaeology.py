@@ -82,11 +82,15 @@ def mattock(player: PlayerState, level: int) -> tuple[dict | None, str, bool]:
 
 def precision_upgrades(player: PlayerState, level: int) -> tuple[int, bool]:
     """(precision added, assumed?): the Archaeology Guild's mattock precision upgrades, +2 each, sold at the Assistant,
-    Associate, Professor and Guildmaster qualifications (Mattocks page). Not exported: `mattock_upgrades = N` under
-    [players.X.boosts] sets how many are bought, else one per qualification the level reaches is assumed."""
+    Associate, Professor and Guildmaster qualifications (Mattocks page). The export counts them (ARCH_PRECISION_BASE_UPGRADE,
+    plugin 0.5.0); `mattock_upgrades = N` under [players.X.boosts] wins, and without either one per qualification
+    the level reaches is assumed."""
     set_ = profile.boosts(player).get("mattock_upgrades")
     if set_ is not None:
         return 2 * int(set_), False
+    exported = (getattr(player, "vars", None) or {}).get("ARCH_PRECISION_BASE_UPGRADE")
+    if isinstance(exported, int) and exported >= 0:
+        return 2 * exported, False
     return 2 * sum(1 for lvl in QUALIFICATION_LEVELS if level >= lvl), True
 
 
@@ -372,9 +376,9 @@ def hand_in(player: PlayerState, level: int, restored: dict[str, float], xp: flo
     best = ag.best_research(level)
     if chronotes and best and not ag.unlocks_left(player):
         site, info = best
-        cost = ag.research_cost(level, info["factor"])
+        cost = ag.research_cost(level, info["factor"], player)
         hours = min(24 / gathering.PLAY_HOURS_PER_DAY, chronotes / cost)
-        xp += hours * ag.research_xp(level, info["factor"])
+        xp += hours * ag.research_xp(level, info["factor"], player)
         chronotes -= hours * cost
         notes.append(f"chronotes fund {hours:.1f}h of {site} research a played hour (offline)")
     return ({"chronotes": chronotes} if chronotes > 1e-9 else {}), xp, notes

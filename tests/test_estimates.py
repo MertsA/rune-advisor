@@ -178,6 +178,17 @@ def test_guild_unlocks_research_and_hand_ins(monkeypatch):
     assert "Soil box upgrade" not in left and "Master archaeologist's hat" in left
     p.boosts = {"archaeology_unlocks": ["Material storage upgrade x3"]}
     assert "Material storage upgrade" not in {u["name"] for u, _ in ag.unlocks_left(p)}
+    # The export's tier counts (0.5.0): the test account's 3/1/3/0 leaves workbench storage from Professor, precision at
+    # Guildmaster and the relic loadout; "Workbench upgrade" is the series' first tier.
+    p.boosts = {}
+    p.vars = {"ARCH_SOIL_BOX_UPGRADE": 3, "ARCH_MATERIAL_STORAGE_UPGRADE": 3,
+              "ARCH_RESTORATION_WORKBENCH_STORAGE_UPGRADE": 1, "ARCH_PRECISION_BASE_UPGRADE": 3,
+              "ARCH_RELIC_LOADOUT_GUILD_REWARD_SHOP": 0}
+    rows = [(u["name"], u["chronotes"]) for u, known in ag.unlocks_left(p) if not u["name"].startswith(("Master", "Arch"))]
+    assert ("Workbench upgrade", 25000) not in rows and ("Workbench storage upgrade", 60000) in rows
+    assert ("Mattock precision upgrade", 150000) in rows and ("Mattock precision upgrade", 75000) not in rows
+    assert ("Additional relic loadout", 80000) in rows and not any(n == "Material storage upgrade" for n, _ in rows)
+    assert archaeology.precision_upgrades(p, 100) == (6, False)
     # Research: 4,000 xp an hour at Kharid-et at 100, 110% at Stormguard; 5 x 100 x 1.1 = 550 chronotes an hour.
     assert ag.research_xp(100, 110) == pytest.approx(4400) and ag.research_cost(101, 110) == pytest.approx(550)
     assert ag.best_research(100)[1]["factor"] == 110

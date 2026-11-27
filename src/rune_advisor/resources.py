@@ -128,7 +128,7 @@ def load_pool(player: PlayerState, extra: list[dict[str, Any]] | None = None) ->
     if player.rested_xp:
         pool.append(Resource(name="rested xp", source="Aster (Fort Forinthry Town Hall)", star="small",
                              scale=0.01, units=player.rested_xp, all_at_once=True, cadence="regen",
-                             spend_first=player.rested_xp >= RESTED_CAPS[0],
+                             spend_first=player.rested_xp >= rested_cap(player),
                              hours_per_unit=0.1 / player.rested_xp, verified=True))
     return ResourcePool(pool)
 
@@ -177,8 +177,19 @@ _STAR_NAMES = [
 STAR_LIKE = {"Black pearl": "medium"}
 UNBANKABLE = {"Black pearl"}  # the wiki's infobox: bankable = No
 # Rested xp held stops growing at the Town Hall's cap (tier 1: 500, tier 2: 1,000, tier 3: 1,500; the wiki's Town
-# Hall tiers). The tier is not exported, so from the lowest cap up the balance may be full.
+# Hall tiers). The tier is the export's PLAYER_FORT_BUILDING_TOWNHALL (plugin 0.5.0): 3 with every fort building at
+# tier 3 (beta, 2026-11-26), so the value is the tier and 0 none built. Without it, from the lowest cap up the
+# balance may be full.
 RESTED_CAPS = (500, 1_000, 1_500)
+TOWN_HALL_VAR = "PLAYER_FORT_BUILDING_TOWNHALL"
+
+
+def rested_cap(player: PlayerState) -> int:
+    """The rested xp cap of the player's Town Hall tier; the lowest cap when the export doesn't say."""
+    tier = getattr(player, "vars", {}).get(TOWN_HALL_VAR)
+    if isinstance(tier, int) and 1 <= tier <= len(RESTED_CAPS):
+        return RESTED_CAPS[tier - 1]
+    return RESTED_CAPS[0]
 
 
 def star_resources(holdings: dict[str, int]) -> list[Resource]:

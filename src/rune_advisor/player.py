@@ -246,10 +246,18 @@ ROCK_SKILL_CODE_BASE = 8
 ROCK_SKILLS_TRAINED = {"Melee": {"Attack", "Strength", "Defence"}}  # golden rock types that aren't one skill
 
 # Reward currency balances held in player vars (found in the 2026-10-31 var-name dump).
+# Dungeoneering tokens are RAND_REWARD_TOKENS ("RAND" is the game's name for Daemonheim: random dungeons), a whole
+# VarPlayer: 316,448 -> 306,448 buying 10,000 tokens' worth at the Rewards Trader (beta, 2026-11-26; REWARDSHOP_FUNDS
+# copies it only while the shop is open). Reaper points are the VarBit BSLAY_POINTS (264 -> 224 spending 40 at the
+# Soul Reaper shop, same day), pilfer points SAFES_REWARD_POINTS (2,078 -> 1,078 buying One Finger Discount), the
+# Blessings of the Wolf SLOW_SUM_HAVENHYTHE_REWARD_SHOP_CURRENCY (blessings.py), thaler SPOTLIGHT_CURRENCY (35 -> 30
+# at Stanley Limelight; named as the shops spell it). All exported since plugin 0.5.0.
 CURRENCY_VARS = {"Slayer points": "SMKI_SLAYER_POINTS", "Marks of War": "PVM_HUB_CURRENCY",
-                 "Goebie reputation": "RAID1_GOEBIE_REP"}
-# War's Retreat campfire: PVM_HUB_CAMPFIRE_STATE assumed to count upgrades bought (0 regular ... 7 eternal magic),
-# the order of drops.CAMPFIRE_TIERS. Unverified until compared with the tier shown at War's Wares.
+                 "Goebie reputation": "RAID1_GOEBIE_REP", "Dungeoneering tokens": "RAND_REWARD_TOKENS",
+                 "Reaper points": "BSLAY_POINTS", "Blessings of the Wolf": "SLOW_SUM_HAVENHYTHE_REWARD_SHOP_CURRENCY",
+                 "Pilfer points": "SAFES_REWARD_POINTS", "thaler": "SPOTLIGHT_CURRENCY"}
+# War's Retreat campfire: PVM_HUB_CAMPFIRE_STATE counts upgrades bought (0 regular ... 7 eternal magic), the order of
+# drops.CAMPFIRE_TIERS: an elder campfire read 6 (beta, 2026-11-26).
 CAMPFIRE_STATE_VAR = "PVM_HUB_CAMPFIRE_STATE"
 # Banked bonus xp per skill: BONUSXP_<SKILL> holds the pool in TENTHS of an xp (a small prismatic fallen star at
 # Smithing 99 took it 0 -> 106,465 while its table value is 10,646.5; beta, 2026-11-11). BONUSXP_<SKILL>_STORED
@@ -584,6 +592,10 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
         p.penguin_points = points  # overrides.toml's `penguin_points` still wins
     if (mode := account_from_vars(p.vars)) is not None:
         p.ironman, p.group_ironman, p.hardcore = mode  # the game's own flags beat the hiscores and settings
+    from . import kingdom
+
+    if text := kingdom.note(p):
+        p.notes.append(text)
     # Banked bonus xp from BONUSXP_<SKILL> vars, unless the snapshot's bonusXp table already set it.
     stored_differs = []
     for enum_name, name in plugin_db.SKILLTYPE_TO_NAME.items():
@@ -688,7 +700,7 @@ def apply_group_storage(p: PlayerState, raw: dict[str, Any]) -> None:
 # Currency balances the reward shops take, as the gatherer's stock (inventory CURRENCIES): a shop recipe's price comes
 # out of the balance before any earning is costed, and a joint plan's goals use it up in turn (2026-11-22). Goebie
 # reputation is left out: the shops name several reputations alike.
-SHOP_CURRENCIES = {"Dungeoneering tokens", "Slayer points", "Marks of War"}
+SHOP_CURRENCIES = {"Dungeoneering tokens", "Slayer points", "Marks of War", "Reaper points", "Pilfer points", "thaler"}
 
 
 def sync_currency_inventory(p: PlayerState) -> None:
@@ -710,7 +722,7 @@ def apply_overrides(p: PlayerState, raw: dict[str, Any]) -> None:
         p.bonus_xp[SKILL_ALIASES.get(skill, skill)] = int(amount)
     if "rested_xp" in mine:
         p.rested_xp = int(mine["rested_xp"])
-    # currencies = { "Dungeoneering tokens" = 250000 }: balances the export lacks (an exported one is overridden).
+    # currencies = { "Dungeoneering tokens" = 250000 }: balances an older export lacks (an exported one is overridden).
     for currency, amount in mine.get("currencies", {}).items():
         p.currencies[currency] = int(amount)
     sync_currency_inventory(p)

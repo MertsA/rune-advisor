@@ -71,8 +71,16 @@ SKIP_FACILITIES = {"Creation kiln", "Pedestal (Dungeoneering)",  # Daemonheim en
 REPEATABLE_BUILD = re.compile(r"workbench|sawmill|hotspot|space\b|decoration bench", re.I)
 
 
+# Fort Forinthry's one repeatable blueprint: reinforcing a tier 3 building with eternal frames (fort.py). The recipe
+# bucket gives it 1 tick; it takes the base xp at the guide's typical xp an hour at the hotspots.
+REPEATABLE_BLUEPRINTS = {"Eternal reinforcement"}
+TICKS_PER_HOUR = 6000
+
+
 def one_time_build(r: dict) -> bool:
     facility = r.get("facility") or ""
+    if r["output"] in REPEATABLE_BLUEPRINTS:
+        return False
     if "Statue plinth" in facility:
         return True
     if r.get("skill") != "Construction":
@@ -80,6 +88,14 @@ def one_time_build(r: dict) -> bool:
     if not facility:  # an item built anywhere (a ship's frame), else scenery: a quest's pig machine, a paddock
         return r["output"] not in members_items()
     return not REPEATABLE_BUILD.search(facility) or facility.startswith("Pig ")
+
+
+def _blueprint_ticks(r: dict) -> dict:
+    from .. import fort
+
+    extra = fort.data()["extras"].get(r["output"]) or {}
+    rate = extra.get("xp_per_hour")
+    return {**r, "ticks": r["xp"] / rate * TICKS_PER_HOUR} if rate else r
 
 
 # Potion doses every family can be decanted to (the wiki names "(4)" for some potions only).
@@ -162,6 +178,7 @@ def catalogue() -> list[dict]:
                     and r.get("facility") not in SKIP_FACILITIES and not r.get("daemonheim")
                     and not one_time_build(r)]
     out = [{**r, "output": _alias(r["output"])} if _alias(r["output"]) != r["output"] else r for r in out]
+    out = [_blueprint_ticks(r) if r["output"] in REPEATABLE_BLUEPRINTS else r for r in out]
     from ..currencies import arc_recipes, shop_recipes
 
     out += shop_recipes() + arc_recipes()  # reward shops: N of a currency -> the item (currencies.py earns it)

@@ -202,6 +202,8 @@ var = { VarPlayer = configTable({
     varBit(-15, "STATUE_LAST_SKILL", "STATUE_MAIN", 0xFE0, 9),  -- last strange rock: Herblore (code 9, observed 2026-10-31)
     varBit(-16, "ELFCITY_STATUE_LAST_SKILL", "ELFCITY_PERM4", 0x3E0, 14),  -- last golden rock: Smithing (8 + index 6)
     varBit(-17, "SMKI_SLAYER_POINTS", smki2, 0x1FFFF, 610),  -- Slayer points balance
+    { id = 24, configName = "RAND_REWARD_TOKENS", value = 316448 },  -- Dungeoneering tokens balance
+    varBit(-25, "BSLAY_POINTS", "BSLAY", 0x1FFF8000, 264),  -- Reaper points
     varBit(-18, "PVM_HUB_CAMPFIRE_STATE", "PVM_HUB_1", 0x1E00000, 6),  -- War's Retreat campfire: elder (assumed encoding)
     { id = 19, configName = "BONUSXP_ATTACK", value = 25000 },  -- banked bonus xp
     { id = 21, configName = "SLAYER_TARGET", value = 42 },  -- Slayer assignment: abyssal demons, 37 left, from Kuradal

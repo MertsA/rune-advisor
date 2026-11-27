@@ -38,6 +38,22 @@ M.FIELDS = {
     { "DINO_GAME_HUNTER_MARKS", 16, "bit" },        -- Hunter marks (Anachronia Hunter Mark Shop currency)
     { "DINO_GAME_SHOP_ELITE_OUTFIT_BLUEPRINT", 1, "bit" }, -- trapper outfit blueprint bought from that shop
     { "SMKI_SLAYER_POINTS", 17, "bit" },            -- Slayer points
+    { "RAND_REWARD_TOKENS", 32, "var" },            -- Dungeoneering tokens ("RAND": random dungeons)
+    { "BSLAY_POINTS", 14, "bit" },                  -- Reaper points
+    { "ARTISAN_RESPECT", 17, "bit" },               -- Artisans' Workshop respect, in thousandths of a percent
+    { "QUICK_TELE_CHARGES", 12, "bit" },            -- quick charges for teleports on the world map
+    { "SLOW_SUM_HAVENHYTHE_REWARD_SHOP_CURRENCY", 16, "bit" }, -- Blessings of the Wolf (Shrine of the Spirit Wolves)
+    { "SAFES_REWARD_POINTS", 16, "bit" },           -- pilfer points (Safecracking)
+    { "SPOTLIGHT_CURRENCY", 32, "var" },            -- thaler (Minigame Spotlight)
+    -- Safecracking rewards bought with pilfer points: loot bags and the five success upgrades
+    { "SAFES_REWARD_BOUGHT_MEDIUM_BAG", 1, "bit" },
+    { "SAFES_REWARD_BOUGHT_LARGE_BAG", 1, "bit" },
+    { "SAFES_REWARD_BOUGHT_HUGE_BAG", 1, "bit" },
+    { "SAFES_REWARD_BOUGHT_SUCCESS_1", 1, "bit" },  -- One Finger Discount
+    { "SAFES_REWARD_BOUGHT_SUCCESS_2", 1, "bit" },
+    { "SAFES_REWARD_BOUGHT_SUCCESS_3", 1, "bit" },
+    { "SAFES_REWARD_BOUGHT_SUCCESS_4", 1, "bit" },
+    { "SAFES_REWARD_BOUGHT_SUCCESS_5", 1, "bit" },
     -- The current Slayer assignment, as the Slayer counter shows it
     { "SLAYER_TARGET", 32, "var" },                 -- which creatures (0 = no assignment)
     { "SLAYER_COUNT", 32, "var" },                  -- kills left
@@ -49,6 +65,34 @@ M.FIELDS = {
     -- Things the player has built up or unlocked
     { "DINO_BASE_CAMP_SKILLCAPE_STAND_STATE", 6, "bit" }, -- Anachronia base camp: the skillcape stand
     { "PVM_HUB_CAMPFIRE_STATE", 4, "bit" },         -- War's Retreat campfire upgrade tier
+    -- Archaeology Guild shop: tiers bought (soil box upgrades are with the soil box below)
+    { "ARCH_MATERIAL_STORAGE_UPGRADE", 2, "bit" },
+    { "ARCH_RESTORATION_WORKBENCH_STORAGE_UPGRADE", 2, "bit" },
+    { "ARCH_PRECISION_BASE_UPGRADE", 3, "bit" },    -- mattock precision upgrades
+    { "ARCH_RELIC_LOADOUT_GUILD_REWARD_SHOP", 1, "bit" }, -- the additional relic loadout
+    -- Managing Miscellania, as the kingdom's management screen shows it
+    { "MISC_APPROVAL", 7, "bit" },                  -- approval, of 127
+    { "MISC_COFFERS", 27, "bit" },                  -- coins in the coffers
+    { "MISC_POINTS_WOOD", 4, "bit" },               -- subjects on each category
+    { "MISC_POINTS_MINE", 4, "bit" },
+    { "MISC_POINTS_FISH", 4, "bit" },
+    { "MISC_POINTS_HERB", 4, "bit" },
+    { "MISC_POINTS_RAREWOOD", 4, "bit" },
+    { "MISC_POINTS_FARM", 4, "bit" },
+    { "MISC_HERBS_OR_FLAX", 1, "bit" },             -- 0 = herbs
+    { "MISC_COOKED", 1, "bit" },                    -- 0 = raw fish
+    { "MISC_RAREWOOD_TYPE", 2, "bit" },             -- the hardwood setting (encoding unknown)
+    -- Fort Forinthry: each building's tier (0-3; all nine read 3 on a fully built fort, beta 2026-11-26)
+    { "PLAYER_FORT_BUILDING_WORKSHOP", 4, "bit" },
+    { "PLAYER_FORT_BUILDING_TOWNHALL", 4, "bit" },  -- also sets the rested xp cap
+    { "PLAYER_FORT_BUILDING_CHAPEL", 4, "bit" },
+    { "PLAYER_FORT_BUILDING_COMMAND_CENTRE", 4, "bit" },
+    { "PLAYER_FORT_BUILDING_KITCHEN", 4, "bit" },
+    { "PLAYER_FORT_BUILDING_GUARDHOUSE", 4, "bit" },
+    { "PLAYER_FORT_BUILDING_GROVE", 4, "bit" },
+    { "PLAYER_FORT_BUILDING_RANGERS_WORKROOM", 4, "bit" },
+    { "PLAYER_FORT_BUILDING_BOTANISTS_WORKBENCH", 4, "bit" },
+    { "PLAYER_FORT_BUILDING_WALLS_COMPLETE", 1, "bit" }, -- the walls New Foundations builds
     { "PLAYER_FORT_REST_PERCENT", 11, "bit" },      -- Fort Forinthry rested xp, as a percentage (the game says it in
                                                -- chat at login and on entering the fort)
     { "FOTG2_DIGSITE_AGILITY_XP", 20, "bit" },      -- Empty Throne Room agility course: xp earned on it (it runs out)

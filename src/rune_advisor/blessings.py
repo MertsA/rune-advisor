@@ -3,8 +3,10 @@
 One Blessing per pouch infused at the Shrine of Inanna's empowered obelisk, whatever the pouch (scrolls give
 none). The shop unlocks its eight rewards in order at running totals (THRESHOLDS: the Blessings aren't spent),
 5,000 for the lot, which is the achievement "No Need to Pikkenchoose". The game tests one "owned" bit per
-reward, not the balance, and the balance isn't exported: it is taken as the threshold of the last reward
-unlocked (0 with none), so up to 599 too low, and said so. Players who owned Shaman's outfit pieces before
+reward. The balance is the export's SLOW_SUM_HAVENHYTHE_REWARD_SHOP_CURRENCY (plugin 0.5.0; 337 -> 347 infusing ten
+pouches on the beta, 2026-11-26, with no reward unlocked yet); an older export is taken as the threshold of the last
+reward unlocked (0 with none), so up to 599 too low, and said so. The game calls it a shop currency: should it ever
+read below an unlocked reward's threshold, rewards spend it after all, and the plan says so. Players who owned Shaman's outfit pieces before
 Havenhythe started with those unlocked.
 
 Cost: the pouches still to infuse, each at the cheapest pouch the player can make there: the gatherer's whole
@@ -25,14 +27,30 @@ THRESHOLDS = {"Shaman's headdress": 600, "Shaman's poncho": 1200, "Shaman's legg
 TOTAL = max(THRESHOLDS.values())
 
 
-def known_blessings(player: PlayerState) -> int:
-    """Blessings the export proves: the threshold of the dearest reward unlocked."""
+VAR = "SLOW_SUM_HAVENHYTHE_REWARD_SHOP_CURRENCY"
+
+
+def proven_blessings(player: PlayerState) -> int:
+    """Blessings the unlocked rewards prove: the threshold of the dearest one."""
     a = player.achievements.get(ACHIEVEMENT)
     if a is None:
         return 0
     if a.completed:
         return TOTAL
     return max((THRESHOLDS.get(str(r.get("description")), 0) for r in a.requirements if r.get("complete")), default=0)
+
+
+def exported_blessings(player: PlayerState) -> int | None:
+    value = player.vars.get(VAR)
+    return value if isinstance(value, int) and value >= 0 else None
+
+
+def known_blessings(player: PlayerState) -> int:
+    """Blessings toward the unlocks: the exported balance, else what the unlocked rewards prove (the higher of the
+    two: a balance below a proven threshold would mean rewards spend it, which the unlock order can't show)."""
+    exported = exported_blessings(player)
+    proven = proven_blessings(player)
+    return proven if exported is None else max(exported, proven)
 
 
 def next_unlock(blessings: int) -> tuple[str, int] | None:
