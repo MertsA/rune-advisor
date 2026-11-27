@@ -457,6 +457,41 @@ def rock_halved_skills(p: PlayerState) -> set[str]:
     return out
 
 
+# The Anachronia base camp's stands (exporter 0.5.0): a helmet on the Slayer helmet stand gives its Slayer-task
+# bonuses without being worn, a cape on the Player Lodge's rack its perk. The stand's state says whether a helmet is
+# on it (1 built and empty, 2 a helmet); which one only the stand's "Check" dialog tells, read by the exporter as
+# tier * 8 + suffix (lib/uiread.lua's lists, mirrored here): 0 = the stand changed since the last check, -1 = never
+# checked. The rack's cape is its item id (-1 none).
+SLAYER_STAND_STATE_VAR = "DINO_BASE_CAMP_SLAYER_STAND_STATE"
+SLAYER_STAND_HELMET_VAR = "UI_SLAYER_STAND_HELMET"
+SKILLCAPE_RACK_VAR = "DINO_BASE_CAMP_PERK_SKILLCAPE"
+HELMET_TIERS = ["Slayer helmet", "Full slayer helmet", "Reinforced slayer helmet", "Strong slayer helmet",
+                "Mighty slayer helmet", "Corrupted slayer helmet"]
+HELMET_SUFFIXES = ["", "(c)", "(e)", "(f)", "(cf)", "(ef)"]
+
+
+def stand_helmet(variables: dict) -> str | None:
+    """The helmet on the Slayer helmet stand ("Reinforced slayer helmet"), "unknown" when one is on it but no check
+    since says which, None when the stand is empty, unbuilt or not exported."""
+    if variables.get(SLAYER_STAND_STATE_VAR) != 2:
+        return None
+    code = variables.get(SLAYER_STAND_HELMET_VAR)
+    if not isinstance(code, int) or code <= 0:
+        return "unknown"
+    tier, suffix = divmod(code, 8)
+    if not 1 <= tier <= len(HELMET_TIERS) or suffix >= len(HELMET_SUFFIXES):
+        return "unknown"
+    return f"{HELMET_TIERS[tier - 1]} {HELMET_SUFFIXES[suffix]}".strip()
+
+
+def stand_note(variables: dict) -> str | None:
+    """A profile note when the planner can't tell which helmet is on the stand: the player should "Check" it."""
+    if stand_helmet(variables) == "unknown":
+        return ("a helmet is on the Slayer helmet stand (Anachronia base camp) but not which one: use \"Check\" on "
+                "the stand once so the exporter can read it")
+    return None
+
+
 def var_containers(variables: dict) -> dict[str, dict[str, int]]:
     """Holdings of the var-backed containers in VAR_CONTAINERS: {inventory: {item: count}}."""
     out: dict[str, dict[str, int]] = {}
@@ -474,6 +509,10 @@ def var_containers(variables: dict) -> dict[str, dict[str, int]]:
             out.setdefault("GEM_BAG", {})[item] = value
     if rocks := statue_bag(variables):
         out["STATUE_BAG"] = rocks
+    if (helmet := stand_helmet(variables)) and helmet != "unknown":
+        out["SLAYER_HELMET_STAND"] = {helmet: 1}
+    if isinstance(cape := variables.get(SKILLCAPE_RACK_VAR), int) and cape > 0:
+        out["SKILLCAPE_RACK"] = {_item_names().get(cape, f"Unknown item {cape}"): 1}
     return out
 
 
@@ -617,6 +656,8 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
     if text := kingdom.note(p):
         p.notes.append(text)
     if text := archaeology_guild.team_note(p):
+        p.notes.append(text)
+    if text := stand_note(p.vars):
         p.notes.append(text)
     if text := basecamp.note(p):
         p.notes.append(text)

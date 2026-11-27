@@ -52,7 +52,7 @@ def _boosts(player: PlayerState) -> dict:
             "rapid": (s.get("rapid") or {}).get(f"Rapid {perk['Rapid']}", {"heat": 1, "progress": 1})
             if perk.get("Rapid") else {"heat": 1, "progress": 1},
             "varrock": varrock, "fortune": perk.get("Fortune", 0),
-            "cape": player.level("Smithing") >= 99 and bool(profile.has(player, "Smithing cape*"))}
+            "cape": player.level("Smithing") >= 99 and bool(profile.has(player, "*smithing cape*"))}
 
 
 def step_ticks(player: PlayerState, item: str) -> float | None:

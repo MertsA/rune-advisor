@@ -290,7 +290,7 @@ def mining_boost(player: PlayerState) -> MiningBoost:
                 # Drunk as each dose wears off (consumables.py): the decaying boost averages half its peak.
                 b.level_per, b.level_flat = 1 + (b.level_per - 1) / 2, b.level_flat / 2
             b.notes.append(pot)
-    if player.level("Mining") >= 99 and boost_profile.has(player, "Mining cape*"):
+    if player.level("Mining") >= 99 and boost_profile.has(player, "*mining cape*"):
         b.cape = True
         b.notes.append("Mining cape")
     if fam := boost_profile.familiar(player, "Mining"):

@@ -6,7 +6,14 @@ local mock = dofile("plugins/tests/mock_api.lua")
 mock.interfaces[284] = { [7] = { type = 20, dynamic = { { type = 3, object = 12345 }, { type = 2, content = "9" } } },
                          [20] = { type = 20, dynamic = { { type = 3, object = 51490 }, { type = 2, content = "186" },
                                                          { type = 1 }, { type = 2, content = "" } } } }
+-- The Slayer helmet stand's "Check" dialog, open.
+mock.interfaces[1189] = { [3] = { type = 4, content = "The following helmet is stored on the stand:<br>Reinforced slayer helmet" } }
 local main = dofile("plugins/rune_advisor_export/main.lua")
+local uiread = require("lib/uiread")
+-- Helmet names: tier * 8 + suffix; the colour is dropped; anything else isn't a helmet this list knows.
+assert(uiread.helmetCode("Reinforced slayer helmet") == 24 and uiread.helmetCode("Full slayer helmet (e) (red)") == 18)
+assert(uiread.helmetCode("Corrupted slayer helmet (cf)") == 52 and uiread.helmetCode("Slayer helmet") == 8)
+assert(uiread.helmetCode("Bronze full helm") == nil)
 local W = main.wire
 local settings = require("lib/settings")
 
@@ -165,6 +172,18 @@ ticks(17)
 local p10 = posts()[quiet + 1]
 assert(p10 and p10:find('"kind":"delta"') and p10:find('"slots":2') and p10:find('"accepted":true'),
     "the rested xp message moves its two fields: " .. tostring(p10))
+
+-- The stand's helmet: read off the dialog; forgotten (0, "check again") when the stand's state changes, as when
+-- the helmet is taken off or put back; read again at the next check. (Checked here, after the posts above.)
+assert(uiread.value("UI_SLAYER_STAND_HELMET") == 24, "the dialog's helmet")
+mock.interfaces[1189] = nil
+var.VarPlayer.DINO_BASE_CAMP_SLAYER_STAND_STATE.value = 1
+mock.fire("ServerLogic")
+assert(uiread.value("UI_SLAYER_STAND_HELMET") == 0, "the stand changed: helmet unknown until the next check")
+var.VarPlayer.DINO_BASE_CAMP_SLAYER_STAND_STATE.value = 2
+mock.interfaces[1189] = { [3] = { type = 4, content = "The following helmet is stored on the stand:<br>Mighty slayer helmet (f)" } }
+mock.fire("ServerLogic")
+assert(uiread.value("UI_SLAYER_STAND_HELMET") == 5 * 8 + 3, "read again at the next check")
 
 local keys = {}
 for k in pairs(mock.store) do keys[#keys + 1] = k end

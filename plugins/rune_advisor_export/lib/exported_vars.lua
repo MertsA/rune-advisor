@@ -94,6 +94,9 @@ M.FIELDS = {
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_2", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_3", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_4", 1, "bit" },
+    { "DINO_BASE_CAMP_SLAYER_STAND_STATE", 2, "bit" }, -- Slayer helmet stand: 1 built and empty, 2 a helmet on it
+    { "UI_SLAYER_STAND_HELMET", 32, "ui" },        -- which helmet, from the stand's "Check" dialog (lib/uiread.lua)
+    { "DINO_BASE_CAMP_PERK_SKILLCAPE", 32, "var" }, -- the skillcape on the Player Lodge's rack: its item id, -1 none
     -- Fairy rings built or repaired before they work (the Kharazi and Lost Grove rings; Mos Le'Harmless's bridge,
     -- both halves; the Fenmoor and Ancient Cavern rings travel with the achievement tests that read them)
     { "FAIRYRING_KHARAZI_UNLOCKED", 1, "bit" },

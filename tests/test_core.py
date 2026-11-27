@@ -428,6 +428,8 @@ def test_wire_protocol_replay(tmp_path):
     assert named["QP"] == 473 and named["BONUSXP_ATTACK"] == 25000 and named["STATUE_BAG_CLIENT"] == 1022623217
     assert named["CHAT_RESTED_XP"] == 564 and named["CHAT_RESTED_XP_CAP"] == 1500  # from the game's message only
     assert named["UI_PORTER_CHARGES"] == 186  # off the porter's buff icon, not the other buff's 9
+    assert named["UI_SLAYER_STAND_HELMET"] == 24  # the stand's dialog: Reinforced slayer helmet (tier 3, no suffix)
+    assert named["DINO_BASE_CAMP_SLAYER_STAND_STATE"] == 2 and named["DINO_BASE_CAMP_PERK_SKILLCAPE"] == 34279
     assert skills["ATTACK"] == 5347000 and members is True
     assert r.state.invs["INV"] == {1511: 5, 23716: 1} and r.state.invs["BANK"] == {1511: 120, 23716: 12}  # no placeholder
     d = derive(configs, fields, {"WOODCUTTING": 85})
@@ -534,7 +536,9 @@ def test_exporter_end_to_end_plan(tmp_path, monkeypatch):
     # Inventories arrive as item ids and counts (no placeholders on the wire) and are named by the server.
     assert p.bank["Huge XP lamp"] == 12 and p.bank["Logs"] == 120 and "Astral rune" not in p.bank
     assert set(p.inventories) == {"BANK", "INV", "WORN", "METAL_BANK", "ORE_BOX", "STATUE_BAG", "MATERIALS_STORAGE", "CRAMULET",
-                                  "CURRENCIES"}  # exported Slayer points etc. are the gatherer's stock
+                                  "CURRENCIES",  # exported Slayer points etc. are the gatherer's stock
+                                  "SLAYER_HELMET_STAND", "SKILLCAPE_RACK"}  # the base camp's stands (mock: both in use)
+    assert p.inventories["SLAYER_HELMET_STAND"] == {"Reinforced slayer helmet": 1}
     assert p.inventories["METAL_BANK"] == {}  # loaded empty: known, not unknown
     # The Invention materials storage and the cramulet's amulets come from named vars, read as containers.
     assert p.inventories["MATERIALS_STORAGE"] == {"Base parts": 3100, "Junk": 900}
@@ -5128,3 +5132,22 @@ def test_vars_tests_carry_reach_the_planner_by_name():
                        "FAIRYRING_FENMOOR_UNLOCKED", "INVENT_BLUEPRINT_AUTO_SCREENER_ACQUIRED", "DINO_HERB_BAG_UNLOCKED",
                        "PLAYER_FORT_BUILDING_WALLS_COMPLETE", "DINO_BASE_CAMP_BUILDING_TIER_TOTEM"]
     assert [n for n in read_by_planner if n not in exact] == []
+
+
+def test_base_camp_stands():
+    """The Slayer helmet stand's helmet (from its "Check" dialog) and the skillcape rack's cape count as owned; a
+    helmet on the stand that no check has named asks the player for one."""
+    from rune_advisor import player as pl
+
+    v = {"DINO_BASE_CAMP_SLAYER_STAND_STATE": 2, "UI_SLAYER_STAND_HELMET": 24, "DINO_BASE_CAMP_PERK_SKILLCAPE": 34279}
+    got = pl.var_containers(v)
+    assert got["SLAYER_HELMET_STAND"] == {"Reinforced slayer helmet": 1}
+    assert got["SKILLCAPE_RACK"] == {"Hooded mining cape (t)": 1} and pl.stand_note(v) is None
+    assert pl.stand_helmet({**v, "UI_SLAYER_STAND_HELMET": 5 * 8 + 4}) == "Mighty slayer helmet (cf)"
+    # Taken off or put back since the last check (0), or never checked (-1): ask for a check.
+    for unknown in (0, -1):
+        w = {**v, "UI_SLAYER_STAND_HELMET": unknown}
+        assert "SLAYER_HELMET_STAND" not in pl.var_containers(w) and "Check" in pl.stand_note(w)
+    # An empty stand: nothing held, nothing to ask.
+    empty = {**v, "DINO_BASE_CAMP_SLAYER_STAND_STATE": 1, "DINO_BASE_CAMP_PERK_SKILLCAPE": -1}
+    assert pl.var_containers(empty) == {} and pl.stand_note(empty) is None

@@ -35,7 +35,8 @@
 --   lib/settings.lua     the settings panel: the token field and the consent button
 --   lib/inventories.lua  the allow-list of own inventories
 --   lib/gamechat.lua     the game's own chat messages (optional chatAccess): rested experience
---   lib/uiread.lua       numbers the game shows on its interface only: the active porter's charges
+--   lib/uiread.lua       numbers the game shows on its interface only: the active porter's charges, the
+--                        helmet on the Anachronia Slayer helmet stand
 --   lib/configdump.lua, lib/canon.lua, lib/configsync.lua
 --                        the game's quest and achievement definitions: read, hashed, and sent to the
 --                        server when a game update changed them (game data, nothing about the player)
@@ -292,6 +293,7 @@ end
 -- sized to a few milliseconds each (measured on the client).
 Event.Logic.Subscribe("runeadvisor-jobs", jobs.tick)
 gamechat.start()
+uiread.start()
 local wireHandle = wire.start({
     json = json, saveJson = saveJson, loadJson = loadJson, bits = bits, jobs = jobs, configs = configs, manifest = manifest,
     playerName = playerName, skillNames = SKILL_NAMES, namedVars = resolveFields,
