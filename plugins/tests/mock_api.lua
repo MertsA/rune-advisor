@@ -205,7 +205,8 @@ var = { VarPlayer = configTable({
     { id = 24, configName = "RAND_REWARD_TOKENS", value = 316448 },  -- Dungeoneering tokens balance
     varBit(-25, "BSLAY_POINTS", "BSLAY", 0x1FFF8000, 264),  -- Reaper points
     varBit(-26, "DINO_BASE_CAMP_SLAYER_STAND_STATE", "DINO_BASE_CAMP_PERKS", 0x600, 2),  -- a helmet on the stand
-    { id = 27, configName = "DINO_BASE_CAMP_PERK_SKILLCAPE", value = 34279 },  -- Hooded mining cape (t) on the rack
+    -- Hooded mining cape (t) on the rack: the client gives an item var as the item's config object, not a number
+    { id = 27, configName = "DINO_BASE_CAMP_PERK_SKILLCAPE", value = { id = 34279, configName = "SKILLCAPE_MINING_TRIMMED_HOODED" } },
     varBit(-18, "PVM_HUB_CAMPFIRE_STATE", "PVM_HUB_1", 0x1E00000, 6),  -- War's Retreat campfire: elder (assumed encoding)
     { id = 19, configName = "BONUSXP_ATTACK", value = 25000 },  -- banked bonus xp
     { id = 21, configName = "SLAYER_TARGET", value = 42 },  -- Slayer assignment: abyssal demons, 37 left, from Kuradal

@@ -142,6 +142,8 @@ local exported = require("lib/exported_vars")
 -- A player var, else a client var of that name: the client keeps copies of some item vars there
 -- (STATUE_BAG_CLIENT holds the statue collection bag's obj var), and the API can't read obj vars directly.
 -- A "chat" field is the value lib/gamechat.lua last read from the game's own messages (-1: not seen yet).
+-- A variable that holds an item reads as the item's config object (the skillcape rack's
+-- DINO_BASE_CAMP_PERK_SKILLCAPE: config.Obj ...(34279), seen 2026-11-27); its item id is what is sent.
 local function readVar(name)
     if gamechat.FIELDS[name] then return gamechat.value(name) end
     if uiread.FIELDS[name] then return uiread.value(name) end
@@ -149,6 +151,10 @@ local function readVar(name)
         local ok, value = pcall(function() return var[domain][name].value end)
         if ok and (type(value) == "number" or type(value) == "string" or type(value) == "boolean") then
             return value
+        end
+        if ok and (type(value) == "userdata" or type(value) == "table") then
+            local okId, itemId = pcall(function() return value.id end)
+            if okId and math.tointeger(itemId) then return math.tointeger(itemId) end
         end
     end
     return nil
