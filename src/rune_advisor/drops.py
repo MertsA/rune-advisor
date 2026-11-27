@@ -194,6 +194,10 @@ ASSUMED_RATES = {
 }
 # The Wendlewick fish farm's pools: fished as one farm (its content rows), never a spot of their own.
 FISH_FARM_POOLS = {"Lobster pool", "Swordfish pool", "Shark pool", "Giant crayfish pool"}
+# Chests opened with a key a recipe makes: costed per key (gathering._keyed_chest_options), never at an hourly guess.
+# The Raptor's chest takes a Raptor key, combined from four parts that drop on Slayer tasks (the wiki, 2026-11-27).
+KEY_CHESTS = {"Raptor's chest of slaying": "Raptor key"}
+CHEST_OPEN_HOURS = 1 / 60  # a minute to get there and open it (assumed)
 DAILY_KINDS = {"npc", "other"}  # drop_source_kinds.json kinds costed as once a day (calendar time, a minute of play)
 ONE_OFF_KINDS = {"quest", "achievement"}  # rewards once: no repeatable source
 # Clue scroll caskets per hour by tier, solving clues the player gets (an estimate; clue sources aren't modelled).
@@ -208,7 +212,7 @@ EXCLUDED_SOURCES = re.compile(r"Treasure Hunter|promotion|Christmas|Santa|Grotto
 def assumed_rate(player: PlayerState, source: str, style: tuple[str, float]) -> tuple[float, str, float, str] | None:
     """(per hour, skill, xp/h, why) for a drop source with no kill or catch rate: a flagged estimate (ASSUMED_RATES),
     or None where no play gets it (EXCLUDED_SOURCES, a Slayer level the player lacks, free-to-play)."""
-    if EXCLUDED_SOURCES.search(source):
+    if EXCLUDED_SOURCES.search(source) or source in KEY_CHESTS:
         return None
     skill = style[0]
     if source.endswith(" (pickpocket)"):

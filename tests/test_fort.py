@@ -169,3 +169,16 @@ def test_guild_track_lists_consultants_left():
     vanescula = got["Unlock Vanescula Drakan for the research team"]
     assert vanescula.uncertain and "Everlight mystery: Fallen Angels" in vanescula.details
     assert "Archaeology 105" in vanescula.why
+
+
+def test_best_team_static_pick():
+    p = _arch_player(**{n: v for n, v in zip(ag.TEAM_VARS, (17, 4, 5, 18, 0))})
+    # Vanescula is no longer unlocked but still assigned, so still usable; four slots at Professor.
+    assert [ag.RESEARCHERS[i][0] for i in ag.best_team(p)] == ["Movario", "Gee'ka", "Vanescula Drakan", "Drew"]
+    assert ag.team(p) == ag.best_team(p)  # research is planned with the suggested team
+    note = ag.team_note(p)
+    assert note.startswith("research team Vanescula Drakan, Dorian, Eduardo, Movario (speed +22%")
+    assert "suggested: Movario, Gee'ka, Vanescula Drakan, Drew" in note
+    # Without the unlocks in the export, the assigned team is what research is planned with.
+    bare = PlayerState(name="z", vars={n: v for n, v in zip(ag.TEAM_VARS, (17, 4, 5, 18, 0))})
+    assert ag.best_team(bare) is None and ag.team(bare) == [17, 4, 5, 18]

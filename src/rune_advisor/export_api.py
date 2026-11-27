@@ -1705,6 +1705,11 @@ def snapshot_from_state(configs: GameConfigs, layout: wire.WireLayout, state: wi
     # VarBit, which is never negative.
     width = dict(layout.fields)
     named = {k: _signed32(v) if width.get(k, 32) == 32 else v for k, v in named.items()}
+    # Vars quests and achievements test travel in the config-derived part of the wire; the ones it carries whole
+    # (every bit, uncapped: BaseManifest.exact_fields) reach the planner by name too, so the hand-written list only
+    # holds what no test reads. A hand-listed value wins.
+    exact = layout.manifest.exact_fields()
+    named = {**{k: v for k, v in fields.items() if k in exact}, **named}
     # Levels as Player.GetLevelUncapped reports them: from the xp, capped at the skill's own maximum (99 for
     # Fishing, 120 for Archaeology), not virtual levels.
     skills = {}

@@ -5,6 +5,7 @@ from .collection_logs import CollectionLogsTrack
 from .darts import DartsTrack
 from .dg_boss import DgBossTrack
 from .dnd_tokens import DndTokensTrack
+from .colossi import ColossiTrack
 from .fairy_rings import FairyRingsTrack
 from .fort import FortTrack
 from .free_xp import FreeXpTrack
@@ -19,4 +20,5 @@ from .toolbelt import ToolbeltTrack
 
 ALL_TRACKS = {t.name: t for t in (QuestPointsTrack, MilestoneTrack, RuneScoreTrack, GearTrack, FreeXpTrack, OutfitsTrack, TaskSetsTrack,
                                          CollectionLogsTrack, ToolbeltTrack, DartsTrack, DndTokensTrack,
-                                         ArchaeologyGuildTrack, ScrollsTrack, DgBossTrack, FortTrack, BaseCampTrack, AdvanceTimeTrack, FairyRingsTrack)}
+                                         ArchaeologyGuildTrack, ScrollsTrack, DgBossTrack, FortTrack, BaseCampTrack, AdvanceTimeTrack, FairyRingsTrack,
+                                         ColossiTrack)}

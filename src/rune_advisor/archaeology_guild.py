@@ -210,14 +210,45 @@ def unlocked(player: PlayerState) -> set[int] | None:
     return out
 
 
-def team(player: PlayerState | None) -> list[int]:
+def assigned(player: PlayerState | None) -> list[int]:
     """The assigned researchers' ids (empty slots and an export without them: none)."""
     values = (getattr(player, "vars", None) or {}) if player is not None else {}
     return [v for n in TEAM_VARS if isinstance(v := values.get(n), int) and v in RESEARCHERS]
 
 
+# A static guess at a researcher's worth on the team, until the choice is optimised against how research is used
+# (the user, 2026-11-27: speed, cost and perks trade off; optimise later): speed counts in full, cost at half, and a
+# perk as a fixed bonus in speed points.
+PERK_SCORE = {"Meticulous": 10, "Extra Resourceful": 8, "materials": 4, "artefacts": 4, "Third Age Expert": 4,
+              "Treasure Hoarder": 2}
+
+
+def _score(i: int) -> tuple[float, int, int, int]:
+    _, speed, cost, perk = RESEARCHERS[i]
+    return speed + PERK_SCORE.get(perk, 0) - cost / 2, speed, -cost, -i
+
+
+def best_team(player: PlayerState | None) -> list[int] | None:
+    """The team the planner assumes: the best-scoring researchers the player can use (unlocked, or still assigned
+    though no longer unlocked) in the slots their qualifications give. None when the export doesn't say who's
+    unlocked."""
+    hired = unlocked(player) if player is not None else None
+    slots = team_slots(player) if player is not None else None
+    if hired is None or not slots:
+        return None
+    usable = hired | set(assigned(player))
+    return sorted(sorted(usable, key=_score, reverse=True)[:slots], key=lambda i: -_score(i)[0])
+
+
+def team(player: PlayerState | None) -> list[int]:
+    """The team research is planned with: the best team when the export says who's unlocked, else the assigned one."""
+    best = best_team(player)
+    return best if best is not None else assigned(player)
+
+
 def team_modifiers(player: PlayerState | None) -> tuple[float, float]:
-    """(speed, cost) as fractions: the team's modifiers summed, with the Command Centre's (the game adds them)."""
+    """(speed, cost) as fractions: the planned team's modifiers summed, with the Command Centre's (the game adds
+    them)."""
     from . import fort
 
     ids = team(player)
@@ -258,20 +289,31 @@ def research_speed(player: PlayerState | None) -> float:
     return 1 / max(0.05, 1 - team_modifiers(player)[0])
 
 
+def _describe(player: PlayerState, ids: list[int]) -> str:
+    from . import fort
+
+    speed = sum(RESEARCHERS[i][1] for i in ids) / 100 + fort.research_speed_factor(player) - 1
+    cost = sum(RESEARCHERS[i][2] for i in ids) / 100 - (1 - fort.research_cost_factor(player))
+    return f"{', '.join(RESEARCHERS[i][0] for i in ids)} (speed +{speed:.0%}, cost {cost:+.0%})"
+
+
 def team_note(player: PlayerState | None) -> str | None:
-    ids = team(player)
-    if not ids:
+    if player is None:
         return None
-    speed, cost = team_modifiers(player)
-    names = ", ".join(RESEARCHERS[i][0] for i in ids)
-    text = f"research team {names}: speed +{speed:.0%} (an hour takes {1 - speed:.0%}), cost {cost:+.0%}"
-    hired = unlocked(player)
+    now, best, hired = assigned(player), best_team(player), unlocked(player)
+    if not now and not best:
+        return None
+    parts = []
+    if now:
+        parts.append(f"research team {_describe(player, now)}")
+    if best and sorted(best) != sorted(now):
+        parts.append(f"suggested: {_describe(player, best)}")
     if hired is not None:
-        kept = [RESEARCHERS[i][0] for i in ids if i not in hired]
-        text += f"; {len(hired)} of {len(RESEARCHERS)} researchers unlocked"
+        parts.append(f"{len(hired)} of {len(RESEARCHERS)} researchers unlocked")
+        kept = [RESEARCHERS[i][0] for i in now if i not in hired]
         if kept:
-            text += f" ({', '.join(kept)} no longer unlocked: replacing them loses them)"
-    return text
+            parts.append(f"{', '.join(kept)} no longer unlocked: replacing them loses them")
+    return "; ".join(parts)
 
     level = player.level("Archaeology")
     for i, (place, need) in CONSULTANTS.items():

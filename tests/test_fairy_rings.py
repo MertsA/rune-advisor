@@ -22,3 +22,17 @@ def test_advance_time_casts_left():
     from rune_advisor import advance_time
     assert advance_time.casts_left(PlayerState(name="PlayerOne")) is None
     assert advance_time.casts_left(PlayerState(name="PlayerOne", vars={advance_time.CASTS_LEFT_VAR: 2})) == 2
+
+
+def test_colossus_murals():
+    from rune_advisor import colossi
+    from rune_advisor.models import Achievement
+
+    assert colossi.restored(PlayerState(name="PlayerOne")) is None
+    tests = [{"kind": "varTotal", "description": f"Fully restore the {m} colossus mural.", "complete": m == "wolf"}
+             for m in colossi.MURALS]
+    p = PlayerState(name="PlayerOne")
+    p.achievements[colossi.ACHIEVEMENT] = Achievement(name=colossi.ACHIEVEMENT, runescore=0, completed=False,
+                                                      requirements=tests)
+    state = colossi.restored(p)
+    assert state["wolf"] is True and state["spider"] is False and len(state) == 7

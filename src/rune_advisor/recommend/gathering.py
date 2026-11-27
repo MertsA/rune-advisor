@@ -52,7 +52,8 @@ from typing import TYPE_CHECKING
 
 from ..cost import row_skills, typical_rate
 from ..boosts import GATHERING_SKILLS, item_multiplier
-from ..drops import (ASSUMED_RATES, CASKETS_PER_HOUR, DAILY_KINDS, EXCLUDED_SOURCES, assumed_rate, drop_chance,
+from ..drops import (ASSUMED_RATES, CASKETS_PER_HOUR, CHEST_OPEN_HOURS, DAILY_KINDS, EXCLUDED_SOURCES, KEY_CHESTS,
+                     assumed_rate, drop_chance,
                      estimated_kills_per_hour, kills_per_hour, source_kind, sources_of, tables)
 from .. import claims, currencies, kingdom, respect, traits
 from .. import disassembly as dis
@@ -229,6 +230,17 @@ def _same_npc(page: str, npc: str) -> bool:
     """A drop page ("Razmire Keelgan") and a weekly claim's NPC text ("Razmire in Mort'ton") name the same NPC."""
     core = re.split(r" in | by | \(", npc.removeprefix("the "))[0]
     return page.lower().startswith(core.lower()) or (" " not in core and page.split()[0] == core)
+
+
+def _dnd_period_days(source: str) -> float | None:
+    """A D&D's reset period in days (data/dnd_resets.json: daily, weekly, monthly), None for anything else."""
+    from .. import dnd
+
+    days = {"daily": 1, "weekly": 7, "monthly": 30}
+    for cadence, names in dnd.rules().get("dnds", {}).items():
+        if source in names:
+            return days.get(cadence)
+    return None
 
 
 class Gatherer:
@@ -424,9 +436,33 @@ class Gatherer:
                     or any(c_["item"] == item and _same_npc(src, c_["npc"]) for c_ in claims.data()):
                 continue  # modelled properly: the kingdom (kingdom.py) and the weekly claims (claims.py)
             per = c * (qty or 1)
+            if (days := _dnd_period_days(src)) is not None:
+                # A D&D with a known reset (data/dnd_resets.json): one completion a period, not a guessed day.
+                out.append(Source("daily", f"from {src} (a D&D: once every {days:g} days)", CLAIM_VISIT_HOURS / per,
+                                  calendar_per_unit=24 * days / per))
+                continue
             why = ASSUMED_RATES["daily"][1]
             out.append(Source("daily", f"from {src} (ASSUMED rate: {why})", CLAIM_VISIT_HOURS / per,
                               calendar_per_unit=24 / per, flag=why))
+        return out
+
+    def _keyed_chest_options(self, item: str) -> list[Source]:
+        """A chest opened with a key a recipe makes (drops.KEY_CHESTS: the Raptor's chest and its Raptor key): each
+        open costs the key's own source and a minute, over the expected amount of `item` an open gives."""
+        out = []
+        for src, chance, qty in sources_of(item):
+            key = KEY_CHESTS.get(src)
+            c, guessed = drop_chance(chance)
+            if key is None or not c or (sub := self.source(key)) is None:
+                continue
+            per = c * (qty or 1)
+            r = {"skill": "", "output": item, "output_qty": per, "level": 1, "xp": 0.0, "ticks": 1.0,
+                 "materials": [[key, 1.0]], "members": True, "quests": [], "other_skills": [], "facility": "",
+                 "conversion": True}
+            out.append(Source("craft", f"open the {src} with a {key}" + (" (chance assumed)" if guessed else ""),
+                              (sub.cost_per_unit + CHEST_OPEN_HOURS) / per,
+                              xp_per_unit={s: v / per for s, v in sub.xp_per_unit.items()}, recipe=r,
+                              unsourced=sub.unsourced, unlock=sub.unlock, flag=sub.flag))
         return out
 
     def _note_flag(self, where: str, why: str, hours: float) -> None:
@@ -643,6 +679,7 @@ class Gatherer:
                                   recipe=r, unsourced=frozenset(unsourced), unlock=unlock))
         options += self._daily_options(item)
         options += self._research_options(item)
+        options += self._keyed_chest_options(item)
         if not any(o.complete for o in options):
             # Packs, gifts and caskets holding the item: a fallback for coverage (following every container from
             # every item widens the search for little gain where a complete source exists).

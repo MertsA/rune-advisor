@@ -22,19 +22,22 @@
 -- variable list when the plugin was built (scripts/build_exported_vars.py writes them, and the widths and
 -- kinds everywhere, from the dev plugin's dump of the game's variables). A variable the game adds later is
 -- not sent until a new version lists it.
+--
+-- A variable some quest or achievement test reads is never listed here, in a family or by hand: it already
+-- travels with those tests (lib/manifest.lua), and the server passes the ones it carries whole on to the
+-- planner by name. The build script leaves them out of families and refuses them as hand-written entries.
 
 local M = {}
 
 M.FIELDS = {
     { "QP", 32, "var" },                            -- quest points, as the quest journal totals them
-    -- Account mode: four fields of the IRONMAN variable (the rest of it is cosmetic unlocks and migration flags)
-    { "IRONMAN_ENABLED", 1, "bit" },                -- an Ironman (solo)
+    -- Account mode: three fields of the IRONMAN variable (the rest of it is cosmetic unlocks and migration flags;
+    -- whether the account is an ironman at all travels with the achievement tests that read it)
     { "HARDCORE_ENABLED", 1, "bit" },               -- a Hardcore Ironman
     { "GROUP_IRONMAN_ENABLED", 1, "bit" },          -- a Group Ironman member
     { "GROUP_HARDCORE_ENABLED", 1, "bit" },         -- in a Hardcore Group Ironman group
     -- Reward currencies and tokens kept in variables
     { "FISHCOMP_FISH_TOKENS", 11, "bit" },          -- Fish Flingers tokens
-    { "FISHCOMP_REWARD_TACKLE_BOX_LEVEL", 3, "bit" }, -- Fish Flingers tackle box upgrade level
     { "WARGUILD_TOKENS_ATTACK", 16, "bit" },        -- Warriors' Guild tokens: attack
     { "WARGUILD_TOKENS_DEFENCE", 16, "bit" },       -- and defence
     { "HVH_TOKENS", 32, "var" },                    -- Heist tokens
@@ -80,28 +83,23 @@ M.FIELDS = {
     { "DINO_BASE_CAMP_WORKER_ASSIGNED_STONE", 8, "bit" },
     { "DINO_BASE_CAMP_WORKER_ASSIGNED_VINES", 8, "bit" },
     { "DINO_BASE_CAMP_WORKER_ASSIGNED_WOOD", 8, "bit" },
-    { "DINO_BASE_CAMP_BUILDING_TIER_BANK_CHEST", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_TIER_HUNTER_LODGE", 3, "bit" },
-    { "DINO_BASE_CAMP_BUILDING_TIER_LODESTONE", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_TIER_PLAYER_LODGE", 3, "bit" },
     { "DINO_BASE_CAMP_BUILDING_TIER_SLAYER_LODGE", 3, "bit" },
     { "DINO_BASE_CAMP_BUILDING_TIER_SLEEPING_QUARTERS", 3, "bit" },
     { "DINO_BASE_CAMP_BUILDING_TIER_SPA", 3, "bit" },
     { "DINO_BASE_CAMP_BUILDING_TIER_STOREHOUSE", 3, "bit" },
-    { "DINO_BASE_CAMP_BUILDING_TIER_TOTEM", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_TIER_TOWNHALL", 3, "bit" },
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_1", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_2", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_3", 1, "bit" },
     { "DINO_BASE_CAMP_BUILDING_DEPOSIT_BOX_4", 1, "bit" },
-    -- Fairy rings built or repaired before they work (the Kharazi, Lost Grove, Fenmoor and Ancient Cavern rings, the
-    -- last under its old name; Mos Le'Harmless's bridge, both halves)
+    -- Fairy rings built or repaired before they work (the Kharazi and Lost Grove rings; Mos Le'Harmless's bridge,
+    -- both halves; the Fenmoor and Ancient Cavern rings travel with the achievement tests that read them)
     { "FAIRYRING_KHARAZI_UNLOCKED", 1, "bit" },
     { "FAIRYRING_THE_LOST_GROVE_UNLOCKED", 1, "bit" },
-    { "FAIRYRING_FENMOOR_UNLOCKED", 1, "bit" },
     { "FT3_MOS_LE_HARMLESS_BRIDGE_1", 1, "bit" },
     { "FT3_MOS_LE_HARMLESS_BRIDGE_2", 1, "bit" },
-    { "FAIRYRINGS_SLAYGUILD_RING", 1, "bit" },
     { "MAGIC_ADVANCE_TIME_CHARGES_REMAINING", 4, "bit" }, -- Advance Time casts left this week (3 a week)
     -- The Dream of Iaia's skilling stations: whether each is built, and the xp still stored in it
     { "QUEST_EGW_FINALE_REWARD_STATION_STATE_CONSTRUCTION", 1, "bit" },
@@ -117,28 +115,12 @@ M.FIELDS = {
     { "QUEST_EGW_FINALE_REWARD_STATION_XP_HERBLORE", 21, "bit" },
     { "QUEST_EGW_FINALE_REWARD_STATION_XP_HUNTER", 21, "bit" },
     { "PVM_HUB_CAMPFIRE_STATE", 4, "bit" },         -- War's Retreat campfire upgrade tier
-    -- Archaeology Guild shop: tiers bought (soil box upgrades are with the soil box below)
-    { "ARCH_MATERIAL_STORAGE_UPGRADE", 2, "bit" },
-    { "ARCH_RESTORATION_WORKBENCH_STORAGE_UPGRADE", 2, "bit" },
-    { "ARCH_PRECISION_BASE_UPGRADE", 3, "bit" },    -- mattock precision upgrades
-    { "ARCH_RELIC_LOADOUT_GUILD_REWARD_SHOP", 1, "bit" }, -- the additional relic loadout
     -- The research team: which researcher is in each of the five slots (0 = empty; kept between expeditions)
     { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_1_ID", 6, "bit" },
     { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_2_ID", 6, "bit" },
     { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_3_ID", 6, "bit" },
     { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_4_ID", 6, "bit" },
     { "ARCH_RESEARCH_CONTRACT_1_RESEARCHER_5_ID", 6, "bit" },
-    { "ARCH_SKILLING_HAT_UNLOCKED", 1, "bit" },     -- archaeologist's outfit pieces bought (one bit each)
-    { "ARCH_SKILLING_BODY_UNLOCKED", 1, "bit" },
-    { "ARCH_SKILLING_LEGS_UNLOCKED", 1, "bit" },
-    { "ARCH_SKILLING_GLOVES_UNLOCKED", 1, "bit" },
-    { "ARCH_SKILLING_BOOTS_UNLOCKED", 1, "bit" },
-    { "ARCH_ELITE_SKILLING_HAT_UNLOCKED", 1, "bit" }, -- master archaeologist's outfit pieces bought
-    { "ARCH_ELITE_SKILLING_BODY_UNLOCKED", 1, "bit" },
-    { "ARCH_ELITE_SKILLING_LEGS_UNLOCKED", 1, "bit" },
-    { "ARCH_ELITE_SKILLING_GLOVES_UNLOCKED", 1, "bit" },
-    { "ARCH_ELITE_SKILLING_BOOTS_UNLOCKED", 1, "bit" },
-    { "INVENT_BLUEPRINT_AUTO_SCREENER_ACQUIRED", 1, "bit" }, -- the auto-screener blueprint bought from the Guild
     -- Managing Miscellania, as the kingdom's management screen shows it
     { "MISC_APPROVAL", 7, "bit" },                  -- approval, of 127
     { "MISC_COFFERS", 27, "bit" },                  -- coins in the coffers
@@ -161,9 +143,6 @@ M.FIELDS = {
     { "PLAYER_FORT_BUILDING_GROVE", 4, "bit" },
     { "PLAYER_FORT_BUILDING_RANGERS_WORKROOM", 4, "bit" },
     { "PLAYER_FORT_BUILDING_BOTANISTS_WORKBENCH", 4, "bit" },
-    { "PLAYER_FORT_BUILDING_WALLS_COMPLETE", 1, "bit" }, -- the walls New Foundations builds
-    { "PLAYER_FORT_REST_PERCENT", 11, "bit" },      -- Fort Forinthry rested xp, as a percentage (the game says it in
-                                               -- chat at login and on entering the fort)
     { "CHAT_RESTED_XP", 32, "chat" },              -- rested experience held, from the game's message (chatAccess)
     { "CHAT_RESTED_XP_CAP", 32, "chat" },          -- and its cap
     { "UI_PORTER_CHARGES", 32, "ui" },             -- the active porter's (or Grace of the Elves') charges, off its buff icon
@@ -357,85 +336,58 @@ M.FIELDS = {
     { "DINO_HERB_BAG_TARROMIN", 8, "bit" },
     { "DINO_HERB_BAG_TOADFLAX", 8, "bit" },
     { "DINO_HERB_BAG_TORSTOL", 8, "bit" },
-    { "DINO_HERB_BAG_UNLOCKED", 1, "bit" },
-    { "DINO_HERB_BAG_UPGRADED", 1, "bit" },
     { "DINO_HERB_BAG_WERGALI", 8, "bit" },
     -- family MINING_OREBOX_: ore box: per ore the count, the stored stone spirits and the capacity upgrade
     { "MINING_OREBOX_ADAMANTITE", 14, "bit" },
     { "MINING_OREBOX_ADAMANTITE_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_ADAMANTITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_BANITE", 14, "bit" },
     { "MINING_OREBOX_BANITE_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_BANITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_COAL", 14, "bit" },
     { "MINING_OREBOX_COAL_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_COAL_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_COPPER", 14, "bit" },
     { "MINING_OREBOX_COPPER_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_COPPER_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_DARK_ANIMICA", 14, "bit" },
     { "MINING_OREBOX_DARK_ANIMICA_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_DARK_ANIMICA_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_DRAKOLITH", 14, "bit" },
     { "MINING_OREBOX_DRAKOLITH_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_DRAKOLITH_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_GOLD", 14, "bit" },
     { "MINING_OREBOX_GOLD_STONE_SPIRIT_VAR", 32, "var" },
     { "MINING_OREBOX_GOLD_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_IRON", 14, "bit" },
     { "MINING_OREBOX_IRON_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_IRON_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_LIGHT_ANIMICA", 14, "bit" },
     { "MINING_OREBOX_LIGHT_ANIMICA_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_LIGHT_ANIMICA_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_LUMINITE", 14, "bit" },
     { "MINING_OREBOX_LUMINITE_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_LUMINITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_MITHRIL", 14, "bit" },
     { "MINING_OREBOX_MITHRIL_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_MITHRIL_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_NECRITE", 14, "bit" },
     { "MINING_OREBOX_NECRITE_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_NECRITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_ORICHALCITE", 14, "bit" },
     { "MINING_OREBOX_ORICHALCITE_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_ORICHALCITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PHASMATITE", 14, "bit" },
     { "MINING_OREBOX_PHASMATITE_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_PHASMATITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PLATINUM", 14, "bit" },
     { "MINING_OREBOX_PLATINUM_STONE_SPIRIT_VAR", 32, "var" },
     { "MINING_OREBOX_PLATINUM_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_ARGONITE", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_ARGONITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_BATHUS", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_BATHUS_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_FRACTITE", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_FRACTITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_GORGONITE", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_GORGONITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_KATAGON", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_KATAGON_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_KRATONIUM", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_KRATONIUM_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_MARMAROS", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_MARMAROS_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_NOVITE", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_NOVITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_PROMETHIUM", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_PROMETHIUM_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_PRIMAL_STONE_SPIRIT_VAR", 32, "var" },
     { "MINING_OREBOX_PRIMAL_ZEPHYRIUM", 14, "bit" },
-    { "MINING_OREBOX_PRIMAL_ZEPHYRIUM_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_RUNITE", 14, "bit" },
     { "MINING_OREBOX_RUNITE_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_RUNITE_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_SILVER", 14, "bit" },
     { "MINING_OREBOX_SILVER_STONE_SPIRIT_VAR", 32, "var" },
     { "MINING_OREBOX_SILVER_UPGRADED", 7, "bit" },
     { "MINING_OREBOX_TIN", 14, "bit" },
     { "MINING_OREBOX_TIN_STONE_SPIRIT_VAR", 32, "var" },
-    { "MINING_OREBOX_TIN_UPGRADED", 7, "bit" },
     -- end family MINING_OREBOX_
     -- family ARCH_SOIL_BOX_: soil box: one count per soil, and the upgrade
     { "ARCH_SOIL_BOX_AERATED_SEDIMENT", 32, "var" },
@@ -444,7 +396,6 @@ M.FIELDS = {
     { "ARCH_SOIL_BOX_FIERY_BRIMSTONE", 32, "var" },
     { "ARCH_SOIL_BOX_MOSSY_PEAT", 32, "var" },
     { "ARCH_SOIL_BOX_SALTWATER_MUD", 32, "var" },
-    { "ARCH_SOIL_BOX_UPGRADE", 2, "bit" },
     { "ARCH_SOIL_BOX_VOLCANIC_ASH", 32, "var" },
     -- end family ARCH_SOIL_BOX_
     -- family INVENT_MATERIAL_: Invention materials storage: one count per part or component

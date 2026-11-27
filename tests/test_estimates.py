@@ -251,3 +251,16 @@ def test_a_spots_catch_is_costed_as_one_visit(monkeypatch):
     v = mix["recipe"]["variants"][0]
     assert mix["spot"] == "Farm" and dict(v["materials"]) == pytest.approx({"Raw a": 2 / 3, "Raw b": 1 / 3})
     assert v["xp"] == pytest.approx((100 * 100 + 50 * 300) / 150)
+
+
+def test_keyed_chests_and_dnd_cadence():
+    from rune_advisor import drops
+    from rune_advisor.models import PlayerState
+    from rune_advisor.recommend.gathering import _dnd_period_days
+
+    # The Raptor's chest is opened with a Raptor key (four Slayer-task parts), never at an hourly guess.
+    assert drops.assumed_rate(PlayerState(name="x"), "Raptor's chest of slaying", ("Ranged", 1.0)) is None
+    assert drops.KEY_CHESTS["Raptor's chest of slaying"] == "Raptor key"
+    # D&Ds come round on their own reset, not once a day: the Giant Oyster is monthly.
+    assert _dnd_period_days("Giant Oyster") == 30 and _dnd_period_days("Herby Werby") == 7
+    assert _dnd_period_days("Sensei Hakase") is None

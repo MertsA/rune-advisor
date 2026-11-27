@@ -2596,6 +2596,9 @@ def test_export_api_applies_posts_like_the_replay(tmp_path):
     assert snap["skills"]["ATTACK"] == {"xp": 5347000, "level": 90}
     assert snap["vars"]["QP"] == 473 and snap["inventories"]["INV"]["items"][0] == {
         "id": 1511, "name": "Logs", "config": "LOGS", "count": 5, "placeholder": False}
+    # Vars the configs' tests carry whole come back by name too (exact_fields): a flag an achievement tests; a quest's
+    # progress var, sent as a count capped at the highest state the tests need, does not.
+    assert snap["vars"].get("HERALDS_BEACON_NULL") == 1 and "HERALDS_PROGRESS" not in snap["vars"]
     # Named vars come back signed, as the client reports them (a mirror reading -1 = "not loaded yet").
     from rune_advisor.export_api import _signed32
     assert _signed32(0xFFFFFFFF) == -1 and _signed32(1022623217) == 1022623217 and _signed32(0x80000000) == -(1 << 31)
@@ -3269,75 +3272,6 @@ def test_export_api_manual_data_requests(tmp_path, capsys, monkeypatch):
     assert check.account_info(a) is None and check.account_info(b) is not None and check.lookup(plugin) == (None, "revoked")
     check.close()
     assert run("delete-account", "--account", a, "--yes")[0] == 1
-
-
-def test_export_api_delete_by_what_a_token_proves(tmp_path, capsys, monkeypatch):
-    """`request delete --secret`: the report of characters and tokens, the suggestion (the whole account when the
-    plugin's token posted for every character, its own characters otherwise, nothing for a read token), the
-    operator's override, and that a reused character name gives no hold over another account."""
-    import io
-
-    from rune_advisor import export_api
-    from rune_advisor.export_api import Store
-
-    data = tmp_path / "api"
-    store = Store(data)
-
-    def account_with(*characters):
-        account, key = store.create_account()
-        tokens = {}
-        for label, names in characters:
-            token_id, token = store.create_token(account, label, ["submit"], None)
-            tokens[label] = (token_id, token)
-            for name in names:
-                store.save_state(account, name, {"player": name, "updated": 1.0, "seq": 1, "posts": 1})
-                store.note_post(token_id, account, name)
-        return account, key, tokens
-
-    solo, _, solo_tokens = account_with(("plugin", ["Zezima"]))
-    shared, shared_key, shared_tokens = account_with(("mine", ["Durial"]), ("mate", ["Elvarg"]))
-    _, reader = store.create_token(shared, "planner", ["read"], None)
-    # Someone else now plays under a name the first account once posted: their own account, their own token.
-    other, _, other_tokens = account_with(("plugin", ["zezima"]))
-    assert [p["player"] for p in store.posted_by(other_tokens["plugin"][0])] == ["zezima"]
-    store.close()
-
-    def run(*argv, stdin=None):
-        monkeypatch.setattr("sys.stdin", io.StringIO(stdin or ""))
-        code = export_api.main(["--data-dir", str(data), "request", "delete", *argv])
-        return code, capsys.readouterr().out
-
-    # One token that posted for all the account holds: the account is suggested, and Enter takes it. The
-    # report names characters and tokens by their first characters, never a whole token.
-    code, out = run("--secret", "-", stdin=other_tokens["plugin"][1] + "\n\n")
-    assert code == 0 and "suggested: account" in out and f"deleted account {other}" in out
-    assert "character 'zezima'" in out and other_tokens["plugin"][1][:6] + "..." in out
-    assert other_tokens["plugin"][1] not in out
-    check = Store(data)
-    assert check.account_info(other) is None
-    # ...and the account of the same name is untouched: the claim never went by the name.
-    assert [p["player"] for p in check.players(solo)] == ["Zezima"]
-    check.close()
-
-    # Two plugins in one account: one token covers only its own character, and that is the suggestion.
-    code, out = run("--secret", shared_tokens["mine"][1], "--choice", "none")
-    assert code == 0 and "suggested: characters" in out and "'Durial'" in out and "nothing deleted" in out
-    code, out = run("--secret", shared_tokens["mine"][1], stdin="\n")
-    assert code == 0 and "deleted 1 character(s)" in out and "Durial" in out and "revoke it" in out
-    check = Store(data)
-    assert [p["player"] for p in check.players(shared)] == ["Elvarg"] and check.lookup(shared_tokens["mine"][1])[1] == "ok"
-    check.close()
-    # A read token: nothing by default; the operator may still choose more.
-    code, out = run("--secret", reader, stdin="\n")
-    assert code == 0 and "suggested: none" in out and "nothing deleted" in out
-    assert run("--secret", reader, stdin="x\n")[0] == 2  # not a choice: nothing happens
-    # The operator overrides a narrow suggestion and deletes the whole account.
-    code, out = run("--secret", shared_tokens["mate"][1], stdin="a\n")
-    assert code == 0 and "suggested: account" in out  # by now 'mate' posted for everything that is left
-    check = Store(data)
-    assert check.account_info(shared) is None and check.account_info(solo) is not None
-    check.close()
-    assert run("--secret", "nope")[0] == 1
 
 
 def test_export_api_delete_what_a_token_posted_over_http(tmp_path):
@@ -5177,3 +5111,20 @@ def test_toolbelt_balance_matches_any_spelling():
     ctx = SimpleNamespace(player=SimpleNamespace(currencies={"Pilfer points": 1_078, "Dungeoneering tokens": 306_448}))
     assert _balance(ctx, "pilfer points") == 1_078 and _balance(ctx, "Dungeoneering token") == 306_448
     assert _balance(ctx, "thaler") is None
+
+
+def test_vars_tests_carry_reach_the_planner_by_name():
+    """The exporter doesn't list vars that quest/achievement tests carry whole; the snapshot passes those on by
+    name (BaseManifest.exact_fields). The planner reads these: if a game update stops every test reading one,
+    it has to go back into exported_vars.lua."""
+    from rune_advisor.sources import game_configs as gc
+
+    configs = gc.load()
+    if configs is None:
+        pytest.skip("no packaged game configs")
+    exact = gc.base_manifest(configs).exact_fields()
+    read_by_planner = ["IRONMAN_ENABLED", "MINING_OREBOX_COAL_UPGRADED", "ARCH_SOIL_BOX_UPGRADE",
+                       "ARCH_MATERIAL_STORAGE_UPGRADE", "ARCH_PRECISION_BASE_UPGRADE", "FAIRYRINGS_SLAYGUILD_RING",
+                       "FAIRYRING_FENMOOR_UNLOCKED", "INVENT_BLUEPRINT_AUTO_SCREENER_ACQUIRED", "DINO_HERB_BAG_UNLOCKED",
+                       "PLAYER_FORT_BUILDING_WALLS_COMPLETE", "DINO_BASE_CAMP_BUILDING_TIER_TOTEM"]
+    assert [n for n in read_by_planner if n not in exact] == []

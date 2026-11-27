@@ -630,6 +630,31 @@ class BaseManifest:
             slots[e.base] = u
         return self.fields_from_bases(slots)
 
+    def exact_fields(self) -> set[str]:
+        """Fields the wire carries whole: every bit of the field's span is in an unsaturated range or the bit list,
+        so its value is the game's, not a capped count or a few tested bits. The snapshot hands these to the planner
+        by name (beside the hand-listed vars), so a var some test reads needs no entry of its own."""
+        cached = self.__dict__.get("_exact")
+        if cached is not None:
+            return cached
+        whole: dict[str, set[int]] = {}
+        for e in self.entries:
+            got = set(e.bits)
+            for r in e.ranges:
+                if r.size == r.span:
+                    got.update(range(r.start, r.stop + 1))
+            whole[e.base] = got
+        out = set()
+        for f in self.layout.fields:
+            base, _, start, stop = self.placement[f.name]
+            if f.mode != "bits" and set(range(start, stop + 1)) <= whole.get(base, set()):
+                out.add(f.name)
+            elif f.mode == "bits" and set(range(start, stop + 1)) <= set(start + b for b in f.bits) \
+                    and set(range(start, stop + 1)) <= whole.get(base, set()):
+                out.add(f.name)
+        self.__dict__["_exact"] = out
+        return out
+
     def fields_from_bases(self, bases: dict[str, int]) -> dict[str, int]:
         """Field values from (the known bits of) each base var's 32-bit value."""
         out = {}
