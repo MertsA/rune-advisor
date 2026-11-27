@@ -259,6 +259,12 @@ CURRENCY_VARS = {"Slayer points": "SMKI_SLAYER_POINTS", "Marks of War": "PVM_HUB
 # War's Retreat campfire: PVM_HUB_CAMPFIRE_STATE counts upgrades bought (0 regular ... 7 eternal magic), the order of
 # drops.CAMPFIRE_TIERS: an elder campfire read 6 (beta, 2026-11-26).
 CAMPFIRE_STATE_VAR = "PVM_HUB_CAMPFIRE_STATE"
+# Fort Forinthry rested xp, read by the exporter from "Working in the fort increases your rested XP (3/1500)": the
+# balance is in no player variable (2026-11-26). Cashing it in sends no message, so the value can be stale until the
+# next gain.
+RESTED_XP_VAR, RESTED_CAP_VAR = "CHAT_RESTED_XP", "CHAT_RESTED_XP_CAP"
+# The active porter's charges, off its buff icon (exporter lib/uiread.lua).
+PORTER_CHARGES_VAR = "UI_PORTER_CHARGES"
 # Banked bonus xp per skill: BONUSXP_<SKILL> holds the pool in TENTHS of an xp (a small prismatic fallen star at
 # Smithing 99 took it 0 -> 106,465 while its table value is 10,646.5; beta, 2026-11-11). BONUSXP_<SKILL>_STORED
 # didn't move then (role unknown); both exported, the first one used.
@@ -592,6 +598,20 @@ def apply_plugin_snapshot(p: PlayerState, snap: dict[str, Any], prefer_snapshot_
         p.penguin_points = points  # overrides.toml's `penguin_points` still wins
     if (mode := account_from_vars(p.vars)) is not None:
         p.ironman, p.group_ironman, p.hardcore = mode  # the game's own flags beat the hiscores and settings
+    # Charges held by the active porter (a worn sign, or a Grace of the Elves' whole store), read off the porter's buff
+    # icon by the exporter (0.5.0; -1 = not shown). The planner counts porters as held signs, so the charges become
+    # that many full signs of the tier the player's Divination makes (inventory PORTER_STORE).
+    if isinstance(charges := p.vars.get(PORTER_CHARGES_VAR), int) and charges > 0:
+        from .consumables import PORTER_CHARGES
+
+        sign = next((n for n, (lvl, _) in PORTER_CHARGES.items() if p.level("Divination") >= lvl), None)
+        if sign and (whole := charges // PORTER_CHARGES[sign][1]) > 0:
+            p.inventories["PORTER_STORE"] = {sign: whole}
+            p.notes.append(f"porter charges in use: {charges:,} (counted as {whole:,} x {sign})")
+    # Rested xp: the exporter reads it from the game's own chat message (chatAccess, 0.5.0); -1 = not seen yet.
+    # overrides.toml's `rested_xp` still wins (applied after).
+    if isinstance(rested := p.vars.get(RESTED_XP_VAR), int) and rested >= 0:
+        p.rested_xp = rested
     from . import kingdom
 
     if text := kingdom.note(p):

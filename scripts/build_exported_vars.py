@@ -9,7 +9,8 @@ exported_vars.lua is edited by hand: which variables, in which groups, with what
 what the game decides, from the dev plugin's dump of every player variable ("Dump var names": name, id, base
 var and mask, saved as state/vars/var_ids.json):
   - each entry's kind and width: "bit" at its mask's width for a VarBit, "var" 32 for a whole player variable.
-    An entry already marked "client" (a client variable, which the dump doesn't hold) is kept as it is. A name
+    An entry already marked "client" (a client variable, which the dump doesn't hold) or "chat" / "ui" (a value read from
+    the game's messages or its interface) is kept as it is. A name
     the dump doesn't have is an error: fix the list.
   - every block between "-- family PREFIX: ..." and "-- end family PREFIX": every variable whose name starts
     with PREFIX, sorted, except those already listed elsewhere in the file.
@@ -86,7 +87,7 @@ def rebuild(text: str, dump: dict[str, list]) -> str:
             indent, name, width, kind, comment = m.group(1), m.group(2), int(m.group(3)), m.group(4), m.group(5)
             if name in dump:
                 width, kind = field_of(dump[name])
-            elif kind != "client":
+            elif kind not in ("client", "chat", "ui"):
                 problems.append(name)
             out.append(entry_line(indent, name, width, kind, comment))
             continue

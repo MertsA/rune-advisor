@@ -189,6 +189,15 @@ def test_guild_unlocks_research_and_hand_ins(monkeypatch):
     assert ("Mattock precision upgrade", 150000) in rows and ("Mattock precision upgrade", 75000) not in rows
     assert ("Additional relic loadout", 80000) in rows and not any(n == "Material storage upgrade" for n, _ in rows)
     assert archaeology.precision_upgrades(p, 100) == (6, False)
+    # Outfit pieces: the export's purchase bits count, held or not (the test account: all five normal pieces, no master ones).
+    for slot in ("HAT", "BODY", "LEGS", "GLOVES", "BOOTS"):
+        p.vars[f"ARCH_SKILLING_{slot}_UNLOCKED"] = 1
+        p.vars[f"ARCH_ELITE_SKILLING_{slot}_UNLOCKED"] = 0
+    names = {u["name"] for u, _ in ag.unlocks_left(p)}
+    assert "Archaeologist's jacket" not in names and "Master archaeologist's jacket" in names
+    assert "Auto-screener v1.080 Blueprint" in names
+    p.vars["INVENT_BLUEPRINT_AUTO_SCREENER_ACQUIRED"] = 1  # bought from the Guild
+    assert "Auto-screener v1.080 Blueprint" not in {u["name"] for u, _ in ag.unlocks_left(p)}
     # Research: 4,000 xp an hour at Kharid-et at 100, 110% at Stormguard; 5 x 100 x 1.1 = 550 chronotes an hour.
     assert ag.research_xp(100, 110) == pytest.approx(4400) and ag.research_cost(101, 110) == pytest.approx(550)
     assert ag.best_research(100)[1]["factor"] == 110

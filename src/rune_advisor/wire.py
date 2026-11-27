@@ -42,8 +42,8 @@ class WireSlot:
 
 
 MANIFEST_DIR = Path(__file__).parent / "wire_manifests"
-FIELD_KINDS = ("var", "bit", "client")
-_ENTRY = re.compile(r'^\s*\{ "([A-Za-z0-9_]+)", (\d+), "(var|bit|client)" \},')
+FIELD_KINDS = ("var", "bit", "client", "chat", "ui")
+_ENTRY = re.compile(r'^\s*\{ "([A-Za-z0-9_]+)", (\d+), "(var|bit|client|chat|ui)" \},')
 
 
 def manifest_description(fields: list[tuple[str, int]]) -> str:

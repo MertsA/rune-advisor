@@ -21,8 +21,8 @@
   </header>
   <main>
 <h1>What the plugin sends, and where it goes</h1>
-<p>The plugin is called <em>Rune Advisor Export</em>. It has one permission, <code>httpAccess</code>, and one
-address it talks to: <code>https://api.runeadvisor.com</code>. This page lists everything that leaves your
+<p>The plugin is called <em>Rune Advisor Export</em>. It needs one permission, <code>httpAccess</code>, can use an
+optional second one, <code>chatAccess</code> (see below), and has one address it talks to: <code>https://api.runeadvisor.com</code>. This page lists everything that leaves your
 computer with the current version. The same list can be read in the plugin's own code, which is written to be read.</p>
 <p class="muted"><em>Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan
 Content Policy. This content is not endorsed by or affiliated with Jagex.</em></p>
@@ -46,6 +46,13 @@ Content Policy. This content is not endorsed by or affiliated with Jagex.</em></
   <tr><td>Character name</td><td>Your display name, so the planner can ask for the right character.</td></tr>
   <tr><td>Skills</td><td>Experience in each of the 29 skills.</td></tr>
   <tr><td>Members flag</td><td>Whether the character is on a members' world.</td></tr>
+  <tr><td>Porter charges</td><td>The number on your sign of the porter's buff icon while a porter is active: the
+  charges a worn sign (and a Grace of the Elves) holds. The game keeps them on the item, which plugins can't read,
+  so the plugin reads the number the game shows you. Nothing on the screen is changed.</td></tr>
+  <tr><td>Rested experience (optional)</td><td>Only with the optional <code>chatAccess</code> permission: your Fort
+  Forinthry rested experience and its cap, the two numbers in the game's message "Working in the fort increases your
+  rested XP (3/1500)". The game shows them nowhere else, so the planner can count rested experience you are holding.
+  No message text is sent.</td></tr>
   <tr><td>Account mode</td><td>Whether the character is an Ironman, Hardcore Ironman or Group Ironman (and
   whether its group is Hardcore), so the planner plans as your account plays.</td></tr>
   <tr><td>Quest and achievement progress</td><td>The player variables the game's quests and achievements
@@ -69,7 +76,10 @@ Content Policy. This content is not endorsed by or affiliated with Jagex.</em></
 <h2>What this version does not read or send</h2>
 <ul>
   <li>Anything about other players: trade screens, other characters, friends or clan lists.</li>
-  <li>Chat of any kind.</li>
+  <li>Chat between players, yours included, and the text of any message. With the optional <code>chatAccess</code>
+  permission the plugin reads the game's own messages for one thing only: your Fort Forinthry rested experience and
+  its cap, which the game tells you only in chat ("Working in the fort increases your rested XP (3/1500)"). A message
+  with a sender is dropped before anything else is looked at, and only those two numbers are sent.</li>
   <li>Where your character is, what you click, or which keys you press.</li>
   <li>Your Jagex account, login name, email address or anything else about you outside the game.</li>
   <li>Shop stock or any other item list that is not your own storage.</li>

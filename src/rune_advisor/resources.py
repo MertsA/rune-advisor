@@ -189,6 +189,9 @@ def rested_cap(player: PlayerState) -> int:
     tier = getattr(player, "vars", {}).get(TOWN_HALL_VAR)
     if isinstance(tier, int) and 1 <= tier <= len(RESTED_CAPS):
         return RESTED_CAPS[tier - 1]
+    cap = getattr(player, "vars", {}).get("CHAT_RESTED_XP_CAP")  # the game's rested xp message (exporter, chatAccess)
+    if isinstance(cap, int) and cap > 0:
+        return cap
     return RESTED_CAPS[0]
 
 

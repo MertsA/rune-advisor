@@ -28,8 +28,15 @@ full state once per login and after that only what changed, at most once every f
 - After a game update, the game's own quest and achievement definitions that changed. That is game data, the
   same for every player.
 
-**What is never read or sent.** Anything about other players; chat of any kind; where your character is, what
-you click or which keys you press; your Jagex account, login name or email address.
+- The charges of your active sign of the porter (or Grace of the Elves), read off the number on its buff icon: the
+  game keeps them on the item, which plugins can't read.
+- Only if you allow the optional chat permission: your rested experience (Fort Forinthry) and its cap, which the
+  game tells you only in one of its own chat messages. The plugin reads the game's own messages and keeps just
+  those two numbers; any message with a sender is dropped before anything else is looked at.
+
+**What is never read or sent.** Anything about other players; chat between players, yours included; the text of
+any message; where your character is, what you click or which keys you press; your Jagex account, login name or
+email address.
 
 **Nothing is sent until you set it up.**
 1. Make an account at <https://runeadvisor.com/account/>. An account is a random key: no email address, no
@@ -71,7 +78,16 @@ reference). The development and any use of the Plugin is at all times subject to
 
 This plugin requests the httpAccess permission for <https://api.runeadvisor.com>. This permission is used to
 send the information listed under "What is sent" to that address, where it is stored so that your planner can
-read it and suggest what to do next. The plugin contacts no other address and requests no other permission.
+read it and suggest what to do next. The plugin contacts no other address.
+
+### chatAccess (optional)
+
+This plugin asks for the optional chatAccess permission to read one value the game gives only in a chat message:
+your Fort Forinthry rested experience ("Working in the fort increases your rested XP (3/1500)"). A message that
+has a sender (anything written by a player, you included) is dropped before its type or text is read; of the
+game's own messages, only those matching that wording are used, and only the two numbers are kept and sent. No
+message text is stored or sent. Without this permission the plugin works the same, and the planner uses the
+rested experience you enter yourself.
 
 ## Data Protection
 
@@ -79,7 +95,8 @@ This plugin uses the following information: the display name of the character th
 experience in each skill; whether it is on a members' world; the player variables that the game's quests and
 achievements test; a written-out list of other player variables (currencies, storages kept in variables,
 collection log entries, tool belt, bonus experience); and the item ids and quantities in the player's own item
-storage. It reads nothing about other players and no chat.
+storage; the charges shown on the sign of the porter's buff icon; and, with the optional chat permission, your
+rested experience and its cap from the game's own chat message. It reads nothing about other players and no chat between players.
 
 This information is transmitted to <https://api.runeadvisor.com>, a server in the United States, which does
 not have full or relevant partial UK adequacy status as specified by

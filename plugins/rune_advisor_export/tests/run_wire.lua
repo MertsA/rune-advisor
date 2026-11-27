@@ -2,6 +2,10 @@
 -- From the repo root:  lua5.4 plugins/rune_advisor_export/tests/run_wire.lua
 package.path = "plugins/rune_advisor_export/?.lua;" .. package.path
 local mock = dofile("plugins/tests/mock_api.lua")
+-- The buff bar with an active porter: another buff's number first (never taken), then the porter's icon and count.
+mock.interfaces[284] = { [7] = { type = 20, dynamic = { { type = 3, object = 12345 }, { type = 2, content = "9" } } },
+                         [20] = { type = 20, dynamic = { { type = 3, object = 51490 }, { type = 2, content = "186" },
+                                                         { type = 1 }, { type = 2, content = "" } } } }
 local main = dofile("plugins/rune_advisor_export/main.lua")
 local W = main.wire
 local settings = require("lib/settings")
@@ -145,6 +149,22 @@ assert(p9 and p9:find('"kind":"delta"') and p9:find('"items":0') and p9:find('"s
     "after a relogin only the var moves: " .. tostring(p9))
 mock.contents.BANK = { { obj = { id = 1511, name = "Logs", configName = "LOGS" }, count = 120 },
                        { obj = { id = 23716, name = "Huge XP lamp" }, count = 12 } }
+
+-- The game's rested xp message (chatAccess): its numbers become the two chat fields of the next delta. A player
+-- typing the same text, or the text in a player chat type, is dropped.
+local beforeChat = #posts()
+mock.fire("ChatMessage", { chatType = ChatType.PUBLIC, chatMessage = "rested XP (999/999)", senderNameUnfiltered = "PlayerTwo" })
+mock.fire("ChatMessage", { chatType = ChatType.GENERAL, chatMessage = "rested XP (998/998)", senderName = "PlayerTwo" })
+mock.fire("ChatMessage", { chatType = ChatType.PUBLIC, chatMessage = "rested XP (997/997)" })
+ticks(17)
+local quiet = #posts()
+assert(quiet == beforeChat, "players' messages change nothing, so nothing is posted")
+mock.fire("ChatMessage", { chatType = ChatType.SPAM,
+    chatMessage = "Working in the fort increases your rested XP (564/1500)", senderNameUnfiltered = "" })
+ticks(17)
+local p10 = posts()[quiet + 1]
+assert(p10 and p10:find('"kind":"delta"') and p10:find('"slots":2') and p10:find('"accepted":true'),
+    "the rested xp message moves its two fields: " .. tostring(p10))
 
 local keys = {}
 for k in pairs(mock.store) do keys[#keys + 1] = k end

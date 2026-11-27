@@ -14,11 +14,14 @@
 -- tab); the token is checked with the API before it is saved. The same settings hold one choice per
 -- character, off until you turn it on: whether that character's data may also be analysed to improve the
 -- planner for everyone. It changes nothing about what is sent. httpAccess is the plugin's one permission
--- and is required (the plugin does nothing without it).
+-- and is required (the plugin does nothing without it); chatAccess is optional (see below).
 --
 -- Nothing in the game is touched: the plugin clicks nothing, draws nothing over the game and changes no
--- setting. Other players' data is never read or sent: no chat, no other characters, no trade screens or
--- shops (the inventories are an allow-list of your own).
+-- setting. Other players' data is never read or sent: no player chat, no other characters, no trade screens
+-- or shops (the inventories are an allow-list of your own). With the optional chatAccess permission it reads
+-- the game's own messages for the few values the game gives only there (your rested experience; lib/gamechat.lua):
+-- a message with a sender is dropped before anything else is looked at, and only the numbers are kept. It also
+-- reads the number on the porter's buff icon (lib/uiread.lua), the charges a porter or Grace of the Elves holds.
 --
 -- The only things kept on this computer (PersistentDB) are the token, the posting pace the server last
 -- asked for, and the last state the API accepted, so a new session can post just the changes.
@@ -31,6 +34,8 @@
 --   lib/manifest.lua     which bits of which player variables go into the state
 --   lib/settings.lua     the settings panel: the token field and the consent button
 --   lib/inventories.lua  the allow-list of own inventories
+--   lib/gamechat.lua     the game's own chat messages (optional chatAccess): rested experience
+--   lib/uiread.lua       numbers the game shows on its interface only: the active porter's charges
 --   lib/configdump.lua, lib/canon.lua, lib/configsync.lua
 --                        the game's quest and achievement definitions: read, hashed, and sent to the
 --                        server when a game update changed them (game data, nothing about the player)
@@ -52,6 +57,8 @@ local http = require("lib/http")
 local canon = require("lib/canon")
 local configdump = require("lib/configdump")
 local configsync = require("lib/configsync")
+local gamechat = require("lib/gamechat")
+local uiread = require("lib/uiread")
 
 
 -- Sent with every full post, so the server knows which protocol it is talking to (the API exposes no
@@ -133,7 +140,10 @@ local exported = require("lib/exported_vars")
 
 -- A player var, else a client var of that name: the client keeps copies of some item vars there
 -- (STATUE_BAG_CLIENT holds the statue collection bag's obj var), and the API can't read obj vars directly.
+-- A "chat" field is the value lib/gamechat.lua last read from the game's own messages (-1: not seen yet).
 local function readVar(name)
+    if gamechat.FIELDS[name] then return gamechat.value(name) end
+    if uiread.FIELDS[name] then return uiread.value(name) end
     for _, domain in ipairs({ "VarPlayer", "VarClient" }) do
         local ok, value = pcall(function() return var[domain][name].value end)
         if ok and (type(value) == "number" or type(value) == "string" or type(value) == "boolean") then
@@ -166,6 +176,10 @@ local function resolveFields(onDone)
             if kind == "client" then
                 local ok, present = pcall(function() return var.VarClient[name] ~= nil end)
                 f.absent = not (ok and present)
+            elseif kind == "chat" then
+                f.absent = not gamechat.FIELDS[name]  -- filled from the game's messages, never a variable
+            elseif kind == "ui" then
+                f.absent = not uiread.FIELDS[name]    -- read off the game's interface, never a variable
             else
                 local ok, isBit, base, mask = pcall(function()
                     local v = var.VarPlayer[name]
@@ -277,6 +291,7 @@ end
 -- one slice per server tick it took some 25 seconds before the first post could go out. The slices are
 -- sized to a few milliseconds each (measured on the client).
 Event.Logic.Subscribe("runeadvisor-jobs", jobs.tick)
+gamechat.start()
 local wireHandle = wire.start({
     json = json, saveJson = saveJson, loadJson = loadJson, bits = bits, jobs = jobs, configs = configs, manifest = manifest,
     playerName = playerName, skillNames = SKILL_NAMES, namedVars = resolveFields,

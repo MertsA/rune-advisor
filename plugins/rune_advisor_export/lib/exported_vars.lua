@@ -10,6 +10,9 @@
 --   "bit"     a VarBit: a field of a bigger player variable, sent at its own width and nothing else of that
 --             variable (many of the game's variables pack several unrelated fields)
 --   "client"  a variable the client keeps for itself (a copy of an item's own variable), 32 bits
+--   "chat"    a value the game gives only in one of its own chat messages (lib/gamechat.lua; optional chatAccess),
+--             32 bits, -1 until the message has been seen
+--   "ui"      a number the game shows only on its interface (lib/uiread.lua), 32 bits, -1 while it isn't shown
 -- The order is the order on the wire, so the list never changes without a new plugin version, and the server
 -- holds the same list (src/rune_advisor/wire_manifests/). A variable this client doesn't have, or whose kind
 -- or width differs from the entry after a game update, is sent as 0 and reported absent until the next
@@ -70,6 +73,17 @@ M.FIELDS = {
     { "ARCH_RESTORATION_WORKBENCH_STORAGE_UPGRADE", 2, "bit" },
     { "ARCH_PRECISION_BASE_UPGRADE", 3, "bit" },    -- mattock precision upgrades
     { "ARCH_RELIC_LOADOUT_GUILD_REWARD_SHOP", 1, "bit" }, -- the additional relic loadout
+    { "ARCH_SKILLING_HAT_UNLOCKED", 1, "bit" },     -- archaeologist's outfit pieces bought (one bit each)
+    { "ARCH_SKILLING_BODY_UNLOCKED", 1, "bit" },
+    { "ARCH_SKILLING_LEGS_UNLOCKED", 1, "bit" },
+    { "ARCH_SKILLING_GLOVES_UNLOCKED", 1, "bit" },
+    { "ARCH_SKILLING_BOOTS_UNLOCKED", 1, "bit" },
+    { "ARCH_ELITE_SKILLING_HAT_UNLOCKED", 1, "bit" }, -- master archaeologist's outfit pieces bought
+    { "ARCH_ELITE_SKILLING_BODY_UNLOCKED", 1, "bit" },
+    { "ARCH_ELITE_SKILLING_LEGS_UNLOCKED", 1, "bit" },
+    { "ARCH_ELITE_SKILLING_GLOVES_UNLOCKED", 1, "bit" },
+    { "ARCH_ELITE_SKILLING_BOOTS_UNLOCKED", 1, "bit" },
+    { "INVENT_BLUEPRINT_AUTO_SCREENER_ACQUIRED", 1, "bit" }, -- the auto-screener blueprint bought from the Guild
     -- Managing Miscellania, as the kingdom's management screen shows it
     { "MISC_APPROVAL", 7, "bit" },                  -- approval, of 127
     { "MISC_COFFERS", 27, "bit" },                  -- coins in the coffers
@@ -95,6 +109,9 @@ M.FIELDS = {
     { "PLAYER_FORT_BUILDING_WALLS_COMPLETE", 1, "bit" }, -- the walls New Foundations builds
     { "PLAYER_FORT_REST_PERCENT", 11, "bit" },      -- Fort Forinthry rested xp, as a percentage (the game says it in
                                                -- chat at login and on entering the fort)
+    { "CHAT_RESTED_XP", 32, "chat" },              -- rested experience held, from the game's message (chatAccess)
+    { "CHAT_RESTED_XP_CAP", 32, "chat" },          -- and its cap
+    { "UI_PORTER_CHARGES", 32, "ui" },             -- the active porter's (or Grace of the Elves') charges, off its buff icon
     { "FOTG2_DIGSITE_AGILITY_XP", 20, "bit" },      -- Empty Throne Room agility course: xp earned on it (it runs out)
     { "INVENT_CHARGE", 32, "var" },                 -- Invention charge pack, in 1/3000ths of a charge (as shown in game)
     { "INVENT_HAS_CHARGE_PACK", 1, "bit" },

@@ -418,14 +418,16 @@ def test_wire_protocol_replay(tmp_path):
     assert r.consistent, r.errors
     assert [(p.kind, p.verdict == "accepted") for p in r.posts] == [
         ("full", True), ("delta", True), ("delta", True), ("delta", True), ("delta", True), ("delta", True), ("delta", False),
-        ("full", True), ("delta", True), ("delta", True)]
+        ("full", True), ("delta", True), ("delta", True), ("delta", True)]
     # (Slayer points moving in their base var after the xp; then the metal bank loaded empty (marker), a relogin's
-    # first delta)
+    # first delta, the game's rested xp message)
     assert [p.bytes for p in r.posts][1:6] == [7, 7, 13, 10, 9]  # kills, saturated kills, logs, xp, points (17 bits)
     assert r.state.invs["METAL_BANK"] == {}  # known and empty, not unknown
     fields, named, skills, members = wire.values(r.layout, r.state)
     assert fields["HERALDS_POST_KILLS"] == 31 and fields["HERALDS_PROGRESS"] == 42 and fields["HERALDS_FLAGS"] == 2
     assert named["QP"] == 473 and named["BONUSXP_ATTACK"] == 25000 and named["STATUE_BAG_CLIENT"] == 1022623217
+    assert named["CHAT_RESTED_XP"] == 564 and named["CHAT_RESTED_XP_CAP"] == 1500  # from the game's message only
+    assert named["UI_PORTER_CHARGES"] == 186  # off the porter's buff icon, not the other buff's 9
     assert skills["ATTACK"] == 5347000 and members is True
     assert r.state.invs["INV"] == {1511: 5, 23716: 1} and r.state.invs["BANK"] == {1511: 120, 23716: 12}  # no placeholder
     d = derive(configs, fields, {"WOODCUTTING": 85})
@@ -542,6 +544,9 @@ def test_exporter_end_to_end_plan(tmp_path, monkeypatch):
     assert p.currencies == {"Slayer points": 700, "Dungeoneering tokens": 316_448,  # Slayer 610 -> 700 in run_wire.lua
                             "Reaper points": 264}
     assert p.inventories["CURRENCIES"]["Dungeoneering tokens"] == 316_448 and p.campfire_tier == "elder"
+    assert p.rested_xp == 564  # the game's rested xp message, read by the exporter with chatAccess
+    # 186 porter charges in use; the mock player has no Divination level for a sign, so no store is counted.
+    assert "PORTER_STORE" not in p.inventories
     assert p.bonus_xp == {"Attack": 2500} and any(n.startswith("bonus xp read from BONUSXP_") for n in p.notes)  # var in tenths
     assert p.holdings["Huge XP lamp"] == 13 and p.holdings["Astral rune"] == 50 and p.holdings["Logs"] == 125
     assert "Coins" not in p.holdings

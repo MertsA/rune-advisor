@@ -7,7 +7,9 @@
     "requiredPermissions": [
         "httpAccess"
     ],
-    "optionalPermissions": [],
+    "optionalPermissions": [
+        "chatAccess"
+    ],
     "urls": {
         "api": "https://api.runeadvisor.com"
     },

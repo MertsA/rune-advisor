@@ -13,10 +13,11 @@ apply when the export carries its tier (`player=`); researchers' own speed buffs
 Ownership of unlocks: the export counts the tiers bought of the soil box (ARCH_SOIL_BOX_UPGRADE), material storage
 (ARCH_MATERIAL_STORAGE_UPGRADE), workbench storage (ARCH_RESTORATION_WORKBENCH_STORAGE_UPGRADE) and mattock precision
 (ARCH_PRECISION_BASE_UPGRADE, mechanics.archaeology.precision_upgrades), and flags the relic loadout
-(ARCH_RELIC_LOADOUT_GUILD_REWARD_SHOP); all but the soil box since plugin 0.5.0 (the test account read 3/1/3/0 with material
+(ARCH_RELIC_LOADOUT_GUILD_REWARD_SHOP), the auto-screener blueprint (INVENT_BLUEPRINT_AUTO_SCREENER_ACQUIRED) and each
+outfit piece (OUTFIT_VARS); all but the soil box since plugin 0.5.0 (the test account read 3/1/3/0 with material
 storage and precision through Professor, workbench storage at Associate, beta 2026-11-26). Outfit pieces and the
-energised meteorite shard (or a mattock of Time and Space) are items held. Without the export, and for the
-auto-screener blueprint always, `archaeology_unlocks = ["Material storage upgrade", ...]` under [players.X.boosts]
+energised meteorite shard (or a mattock of Time and Space) are items held. Without the export,
+`archaeology_unlocks = ["Material storage upgrade", ...]` under [players.X.boosts]
 names the ones bought (with a count suffix " x2" for tiers), else they count as not bought.
 """
 
@@ -47,7 +48,16 @@ def guild() -> dict:
 # Unlock series the export counts (tiers bought, in shop order) or flags (0/1), since plugin 0.5.0.
 EXPORTED_TIERS = {"Material storage upgrade": "ARCH_MATERIAL_STORAGE_UPGRADE",
                   "Workbench storage upgrade": "ARCH_RESTORATION_WORKBENCH_STORAGE_UPGRADE",
-                  "Additional relic loadout": "ARCH_RELIC_LOADOUT_GUILD_REWARD_SHOP"}
+                  "Additional relic loadout": "ARCH_RELIC_LOADOUT_GUILD_REWARD_SHOP",
+                  # set by buying it from the Guild (0 -> 1 with "You've acquired a new blueprint...", beta
+                  # 2026-11-26); studying it at an inventor's workbench is a separate step
+                  "Auto-screener v1.080 Blueprint": "INVENT_BLUEPRINT_AUTO_SCREENER_ACQUIRED"}
+# Outfit pieces bought from the shop: one bit each in ARCH_REWARD_1 (the test account: the five archaeologist's pieces set, no
+# master ones, beta 2026-11-26), exported since 0.5.0; older exports fall back to the items held.
+OUTFIT_VARS = {f"{prefix} {piece}": f"ARCH_{tier}SKILLING_{slot}_UNLOCKED"
+               for prefix, tier in (("Archaeologist's", ""), ("Master archaeologist's", "ELITE_"))
+               for piece, slot in (("hat", "HAT"), ("jacket", "BODY"), ("trousers", "LEGS"), ("gloves", "GLOVES"),
+                                   ("boots", "BOOTS"))}
 # The shop data names the first workbench tier "Workbench upgrade" and the later ones "Workbench storage upgrade".
 SERIES = {"Workbench upgrade": "Workbench storage upgrade"}
 
@@ -85,7 +95,11 @@ def unlocks_left(player: PlayerState) -> list[tuple[dict, bool]]:
                 continue
             out.append((u, True))
         elif name.startswith(("Archaeologist's", "Master archaeologist's")):
-            if name not in held:
+            bought = vars_.get(OUTFIT_VARS.get(name, ""))
+            if isinstance(bought, int):  # the export's purchase bit (0.5.0): pieces kept anywhere count
+                if not bought:
+                    out.append((u, True))
+            elif name not in held:
                 out.append((u, True))
         elif name == "Energised meteorite shard":
             if not ({"Energised meteorite shard", "Mattock of Time and Space"} & set(held)):

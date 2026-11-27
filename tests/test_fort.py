@@ -86,3 +86,20 @@ def test_eternal_reinforcement_is_repeatable_training():
     r = next(r for r in catalogue() if r["output"] == "Eternal reinforcement")
     # 499,200 xp at the guide's ~891k an hour: about 34 minutes at the hotspots, not the bucket's 1 tick.
     assert r["ticks"] == pytest.approx(499_200 / 891_429 * 6000)
+
+
+def test_porter_charges_off_the_buff_icon_become_held_signs():
+    """UI_PORTER_CHARGES (the porter buff's number: a worn sign plus a Grace of the Elves' store) counts as full
+    signs of the tier the player's Divination makes; -1 (not shown) counts nothing."""
+    from rune_advisor.models import Skill
+    from rune_advisor.player import apply_plugin_snapshot
+
+    p = PlayerState(name="PlayerOne", skills={"Divination": Skill("Divination", 99, 13_034_431)})
+    apply_plugin_snapshot(p, {"vars": {"UI_PORTER_CHARGES": 186}})
+    assert p.inventories["PORTER_STORE"] == {"Sign of the porter VII": 3}  # 186 // 50
+    low = PlayerState(name="PlayerOne", skills={"Divination": Skill("Divination", 30, 14_000)})
+    apply_plugin_snapshot(low, {"vars": {"UI_PORTER_CHARGES": 25}})
+    assert low.inventories["PORTER_STORE"] == {"Sign of the porter II": 2}  # 10 a sign
+    unknown = PlayerState(name="PlayerOne", skills={"Divination": Skill("Divination", 99, 13_034_431)})
+    apply_plugin_snapshot(unknown, {"vars": {"UI_PORTER_CHARGES": -1}})
+    assert "PORTER_STORE" not in unknown.inventories

@@ -341,6 +341,15 @@ function HTTPRequest.new(base, path)
     return r
 end
 
+-- The console (core ExecuteConsoleCommand): commands are recorded in mock.console; mock.console_handler(command),
+-- when set, plays the game's side (a cheat changing a var or an inventory).
+mock.console = {}
+mock.console_handler = nil
+function ExecuteConsoleCommand(command)
+    mock.console[#mock.console + 1] = command
+    if mock.console_handler then mock.console_handler(command) end
+end
+
 -- Just enough ui.* for the session recorder's panel: components remember their hooks so a test
 -- can "press" a button with mock.press(button).
 local function component()
@@ -352,13 +361,51 @@ local function component()
     return c
 end
 ui = {
-    Interfaces = { GetComponent = function() return component() end },
+    -- One argument: a combined component id (the plugin layer); two or more: interface id, static id (and, for a
+    -- dynamic component, category and dynamic ids), looked up in mock.interfaces.
+    Interfaces = { GetComponent = function(self, interfaceID, staticID, categoryID, dynamicID)
+                       if staticID == nil then return component() end
+                       local iface = ui_interfaces_get(self, interfaceID)
+                       local c = iface and iface:GetComponent(staticID)
+                       if c and categoryID ~= nil and dynamicID ~= nil then
+                           local found
+                           c:IterateDynamicComponents(function(child)
+                               if child.categoryID == categoryID and child.dynamicID == dynamicID then found = child return true end
+                               return false
+                           end)
+                           return found
+                       end
+                       return c
+                   end,
+                   GetInterface = function(self, interfaceID) return ui_interfaces_get(self, interfaceID) end },
     GroupBox = { new = component }, Text = { new = component }, Layer = { new = component },
     InputField = { new = function() local c = component() c.content = "" return c end },
     Button = { new = function() local c = component() c.isToggled = false return c end },
     Hook = { ONBUTTONPRESSED = 1, ONCONTENTCHANGED = 2 },
 }
+-- One fake game interface for UI scans (ui.Interfaces:GetInterface): mock.interfaces[id] = { [staticID] = component },
+-- a component being { type, content, dynamic = { child components } }.
+mock.interfaces = {}
+local function fakeComponent(spec, interfaceID, staticID, categoryID, dynamicID)
+    local c = { type = spec.type or 4, content = spec.content, interfaceID = interfaceID, staticID = staticID,
+                categoryID = categoryID or -1, dynamicID = dynamicID or -1, associatedObjectID = spec.object or -1 }
+    function c:IterateDynamicComponents(fn)
+        for i, child in ipairs(spec.dynamic or {}) do
+            if fn(fakeComponent(child, interfaceID, staticID, 0, i - 1), true) then return end
+        end
+    end
+    return c
+end
+ui_interfaces_get = function(_, interfaceID)
+    local spec = mock.interfaces[interfaceID]
+    if not spec then return nil end
+    return { GetComponent = function(_, staticID)
+        local c = spec[staticID]
+        return c and fakeComponent(c, interfaceID, staticID) or nil
+    end }
+end
 id = { Component = { TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP = 1 }, Font = { MUSEO_SANS_15PT_REGULAR = 1 },
+       Interface = { BUFF_BAR = 284, CHATBOX = 137 },
        StyleSheet = { BUTTON_DEFAULT = 1, INPUT_DEFAULT = 2, GROUPBOX_DEFAULT = 3 } }
 
 -- On the real client the callback's toggle flag read "on" for the Stop press too (session 2026-10-29),

@@ -295,7 +295,7 @@ function M.build(deps, onDone)
             local fields, absent = {}, {}
             for i, f in ipairs(deps.fields) do
                 local slot = { kind = "named", name = f.name, width = f.width, start = f.start,
-                               clientOnly = f.kind == "client" or nil, absent = f.absent or nil }
+                               clientOnly = (f.kind == "client" or f.kind == "chat" or f.kind == "ui") or nil, absent = f.absent or nil }
                 slots[#slots + 1] = slot
                 fields[#fields + 1] = slot
                 if f.absent then
