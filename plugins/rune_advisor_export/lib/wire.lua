@@ -289,9 +289,12 @@ function M.start(deps)
         -- answer arrived) says nothing about this character's state: drop it.
         if sent.player ~= S.player then return end
         if accepted == true then
+            if sent.check then log("Rune Advisor: the API holds the last post: carrying on with changes only") end
+            S.check = false
             S.acked = { slots = sent.slots, invs = sent.invs, hash = sent.hash }
             saveAcked(sent.hash, sent.bytes)
         elseif accepted == false then
+            S.check = false
             S.acked = nil
         elseif info and info.need == "configs" and deps.syncConfigs then
             -- The server can't decode this layout yet: send it the configs it lacks, then post the
@@ -328,11 +331,15 @@ function M.start(deps)
         for i, slot in ipairs(S.layout.slots) do
             if slot.clientOnly and not slot.absent then readClientOnly(i, slot) end
         end
-        -- A delta with nothing in it is not posted, so look for changes before packing and hashing anything.
+        -- A delta with nothing in it is not posted, so look for changes before packing and hashing anything. The
+        -- one exception is the first post after resuming from a saved state (`S.check`): it goes out even if empty,
+        -- since only the server can say whether it still holds that state. It may not: another API address, a
+        -- server that lost its copy, a post from elsewhere since. Its base hash makes the server answer 409 then,
+        -- and the full state follows at once, instead of the server keeping stale data until something changes.
         local changedSlots, changedItems
         if kind ~= "full" then
             changedSlots, changedItems = diff()
-            if #changedSlots == 0 and #changedItems == 0 then return end
+            if #changedSlots == 0 and #changedItems == 0 and not S.check then return end
         end
         -- The state is packed once per post: the bytes give the hash, are the body of a full post, and are
         -- what gets saved as the acknowledged state if the server accepts.
@@ -357,7 +364,7 @@ function M.start(deps)
         S.seq = S.seq + 1
         -- A copy of what is being posted: the state may change again before the answer arrives.
         local sent = { player = S.player, slots = copySlots(S.slots), invs = copyInvs(S.invs), hash = newHash,
-                       bytes = stateBytes }
+                       bytes = stateBytes, check = S.check and kind ~= "full" }
         deps.transport.post(S.player, header, body, function(accepted, holdTicks, info)
             answered(sent, accepted, holdTicks, info)
         end)
@@ -427,6 +434,7 @@ function M.start(deps)
                     end
                 end
                 S.ready = true
+                S.check = S.acked ~= nil  -- resumed: the first post asks the server whether it agrees (see post)
                 S.untilPost = 1  -- the first post of a login goes out at the next server tick, not an interval later
                 log(string.format("Rune Advisor: wire ready: %d slots (%d bits), layout %08x, %s",
                     #S.layout.slots, S.layout.totalBits, S.layout.hash, S.acked and "resuming from the last post" or "posting the full state"))

@@ -270,6 +270,11 @@ guards are settings in the same file (see Accounts).
   plugin's hash).
 - At login the plugin seeds inventories it hasn't loaded yet from the last acknowledged state, so the first
   delta of a session doesn't report the bank emptied.
+- A login that resumes from the saved acknowledged state checks it with the server first: the first post goes
+  out even with nothing changed, as an empty delta (no slots, no items) on the saved hash. The server accepts it
+  when it holds that state; otherwise it answers 409 and the full state follows at once. Without the check, a server
+  that didn't hold the state (the plugin pointed at another API address, a server that lost its copy) kept its stale
+  copy until the player's state next changed (2026-11-27, `tests/run_resume.lua`).
 - Inventories a full post marks unknown stay as the server last saw them (`known_invs` in the record).
 - Hand-listed fields (plugin 0.5.0): `lib/exported_vars.lua` is a static manifest, every variable written out
   as `{ name, width, kind }` in wire order. Each travels at its width: a VarBit as wide as its mask (an item log

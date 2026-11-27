@@ -149,9 +149,15 @@ mock.fire("GameStateChanged", { newState = GameState.GAME })
 ticks(40)
 assert(W.state.ready and W.state.acked, "resumed from the acknowledged state")
 assert(W.state.invs.BANK and W.state.invs.BANK[1511] == 120, "the unloaded bank is seeded from the last post")
+-- Resuming, the first post goes out even with nothing changed: an empty delta on the saved state's hash, which
+-- the server accepts when it holds that state.
+local check = posts()[10]
+assert(check and check:find('"kind":"delta"') and check:find('"slots":0') and check:find('"items":0')
+    and check:find('"accepted":true'), "the first post after resuming checks with the server: " .. tostring(check))
+assert(not W.state.check, "checked once")
 mock.fire("VarTransmit", { var = { configName = "HERALDS_PROGRESS" }, oldValue = 41, newValue = 42 })
 ticks(17)
-local p9 = posts()[10]
+local p9 = posts()[11]
 assert(p9 and p9:find('"kind":"delta"') and p9:find('"items":0') and p9:find('"slots":1') and p9:find('"accepted":true'),
     "after a relogin only the var moves: " .. tostring(p9))
 mock.contents.BANK = { { obj = { id = 1511, name = "Logs", configName = "LOGS" }, count = 120 },

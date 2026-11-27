@@ -418,9 +418,9 @@ def test_wire_protocol_replay(tmp_path):
     assert r.consistent, r.errors
     assert [(p.kind, p.verdict == "accepted") for p in r.posts] == [
         ("full", True), ("delta", True), ("delta", True), ("delta", True), ("delta", True), ("delta", True), ("delta", False),
-        ("full", True), ("delta", True), ("delta", True), ("delta", True)]
+        ("full", True), ("delta", True), ("delta", True), ("delta", True), ("delta", True)]
     # (Slayer points moving in their base var after the xp; then the metal bank loaded empty (marker), a relogin's
-    # first delta, the game's rested xp message)
+    # check (an empty delta on the saved state: run_resume.lua), its first change, the game's rested xp message)
     assert [p.bytes for p in r.posts][1:6] == [7, 7, 13, 10, 9]  # kills, saturated kills, logs, xp, points (17 bits)
     assert r.state.invs["METAL_BANK"] == {}  # known and empty, not unknown
     fields, named, skills, members = wire.values(r.layout, r.state)
@@ -2743,6 +2743,18 @@ def test_export_http_transport_lua():
                             cwd=Path(__file__).parent.parent)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "run_http: ok" in result.stdout
+
+
+def test_export_resume_checks_with_the_server_lua():
+    """plugins/rune_advisor_export/tests/run_resume.lua: after a relogin the exporter's first post goes out even with
+    nothing changed, so a server that doesn't hold the saved state (another address, lost state) gets the full state
+    at once instead of keeping stale data until something changes."""
+    import subprocess
+
+    result = subprocess.run(["lua5.4", "plugins/rune_advisor_export/tests/run_resume.lua"], capture_output=True,
+                            text=True, cwd=Path(__file__).parent.parent)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith("ok")
 
 
 @needs_dev_plugin
